@@ -8,6 +8,9 @@ group = project.maven_group
 
 repositories {
 	maven {
+		url = 'https://api.modrinth.com/maven'
+	}
+	maven {
 		url = 'https://maven.xpple.dev/maven2'
 	}
 	maven {
@@ -42,7 +45,7 @@ dependencies {
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
 	include modImplementation("dev.xpple:clientarguments:${project.clientarguments_version}")
-	modImplementation "fi.dy.masa.malilib:malilib-fabric-1.21.11:${project.malilib_version}"
+	modImplementation "maven.modrinth:malilib:${project.malilib_version}"
 }
 
 processResources {
