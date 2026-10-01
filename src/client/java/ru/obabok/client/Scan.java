@@ -20,13 +20,15 @@ import ru.obabok.common.model.Whitelist;
 
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Scan {
     public static HashSet<BlockPos> selectedBlocks = new HashSet<>();
     public static HashSet<ChunkPos> unloadedChunks = new HashSet<>();
     private static Whitelist whitelist;
     private static BlockBox range;
-    private static boolean processing = false;
+    private static volatile boolean processing = false;
+    private static final AtomicBoolean completionReported = new AtomicBoolean(true);
     private static boolean remoteProcessing = false;
     private static long remoteChunkProcessedCounter;
     private static long allChunksCounter;
@@ -41,6 +43,7 @@ public class Scan {
 
     public static int executeAsync(ClientLevel world, BlockBox _range, String filename){
         stopScan();
+        completionReported.set(false);
         processing = true;
         range = _range;
         if (world == null) return 0;
@@ -86,12 +89,14 @@ public class Scan {
         range = saveData.range;
         allChunksCounter = saveData.allChunksCounter;
         currentFilename = saveData.currentFilename;
+        completionReported.set(false);
         processing = true;
         return true;
     }
 
     public static void stopScan(){
         processing = false;
+        completionReported.set(true);
         selectedBlocks.clear();
         unloadedChunks.clear();
         allChunksCounter = 0;
@@ -125,6 +130,7 @@ public class Scan {
         stopScan();
         processing = true;
         remoteProcessing = true;
+        completionReported.set(false);
         range = _range;
         currentFilename = filename;
         allChunksCounter = totalChunks;
@@ -202,12 +208,13 @@ public class Scan {
     }
 
     private static void checkProcessing(){
-        if(processing && selectedBlocks.isEmpty() && unloadedChunks.isEmpty()) {
+        if(processing && selectedBlocks.isEmpty() && unloadedChunks.isEmpty()
+                && completionReported.compareAndSet(false, true)) {
+            stopScan();
             if(Minecraft.getInstance().player != null){
                 Minecraft.getInstance().player.displayClientMessage(Component.literal("Scan finished"),false);
                 Minecraft.getInstance().player.playSound(SoundEvents.EXPERIENCE_ORB_PICKUP, 1, 1);
             }
-            stopScan();
         }
     }
 

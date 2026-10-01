@@ -34,13 +34,6 @@ public class ConfigGui extends GuiConfigsBase {
         {
             x += this.createButton(x, y, -1, tab) + 2;
         }
-//        ButtonGeneric testBtn = new ButtonGeneric(width - 75, getScreenHeight() - 30, 65, 20, "Test");
-//        this.addButton(testBtn, (btn, mousebtn)->{
-//            client.player.playSound(SoundEvents.AMBIENT_CAVE.value());
-//            close();
-//        });
-
-
         ButtonGeneric whitelistsButton = new ButtonGeneric(10, getScreenHeight() - 30, 65, 20, "Whitelists");
         this.addButton(whitelistsButton, (button1, mouseButton) -> openGui(new WhitelistSelectorScreen(this, 0)));
         ButtonGeneric taskButton = new ButtonGeneric(85, getScreenHeight() - 30, 40, 20, "Task");

@@ -7,6 +7,7 @@ import ru.obabok.client.Scan;
 import ru.obabok.common.References;
 
 import java.util.Queue;
+import java.util.HashSet;
 import java.util.concurrent.*;
 
 
@@ -43,7 +44,9 @@ public class ChunkScheduler {
             try {
                 RenderUtil.clearRender();
                 RenderUtil.addAllRenderBlocks(Scan.selectedBlocks);
-                RenderUtil.addAllRenderChunks(Scan.unloadedChunks);
+                HashSet<ChunkPos> unloadedChunks = new HashSet<>(Scan.unloadedChunks);
+                unloadedChunks.addAll(ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.getUnloadedChunks());
+                RenderUtil.addAllRenderChunks(unloadedChunks);
             }catch (Exception ignored){}
 
         }, 0, 1000, TimeUnit.MILLISECONDS);

@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.CommonColors;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
 import ru.obabok.client.Scan;
 import ru.obabok.client.gui.widgets.ToggelableWidgedDropDownList;
 import ru.obabok.client.models.ScreenPlus;
@@ -34,6 +35,7 @@ public class WhitelistEditorScreen extends ScreenPlus {
     private final String filename;
     private final WhitelistItem createdWhitelistItem = new WhitelistItem(null, null, null, null);
     private Button addToWhitelistBtn;
+    private Button gravityColumnButton;
     private static final List<String> waterloggedValues = List.of("true", "false");
     public static List<String> pistonBehaviorValues = Arrays.stream(Scan.PistonBehavior.values()).map(Enum::toString).toList();
 
@@ -72,6 +74,13 @@ public class WhitelistEditorScreen extends ScreenPlus {
         addRenderableWidget(new StringWidget(30, y, 120, 20, Component.literal("Block"), font));
         blockInput = new EditBox(font, 130, y, 100, 20, Component.empty());
         addRenderableWidget(blockInput);
+        gravityColumnButton = Button.builder(Component.literal("□ 7+ column"), btn -> {
+            createdWhitelistItem.gravityColumn = !createdWhitelistItem.gravityColumn;
+            updateGravityColumnButton();
+        }).bounds(130, y + 25, 130, 20).build();
+        gravityColumnButton.setTooltip(Tooltip.create(Component.literal("Match columns of 7 or more consecutive blocks")));
+        gravityColumnButton.visible = false;
+        addRenderableWidget(gravityColumnButton);
 
         y+=rowHeight;
         //waterlogged
@@ -113,6 +122,7 @@ public class WhitelistEditorScreen extends ScreenPlus {
             StringWidget widget = new StringWidget(310, y, 120, 20, Component.literal("Condition " + i + "     OR"), font);
 
             String builder = (item.block == null ? "-\n" : item.block + " AND\n") +
+                    (item.gravityColumn ? "Gravity column: 7+ AND\n" : "-\n") +
                     (item.waterlogged == null ? "-\n" : "Waterlogged: " + item.waterlogged + " AND\n") +
                     (item.pistonBehavior == null ? "-\n" : "Piston behavior: " + item.pistonBehavior + " AND\n") +
                     (item.blastResistance == null ? "-" : "Blast resistance: " + item.blastResistance);
@@ -185,7 +195,28 @@ public class WhitelistEditorScreen extends ScreenPlus {
     }
 
     private boolean validateCreatedWhitelistItem(){
-        return createdWhitelistItem.block != null || createdWhitelistItem.waterlogged != null || createdWhitelistItem.pistonBehavior != null || createdWhitelistItem.blastResistance != null;
+        return createdWhitelistItem.block != null || createdWhitelistItem.waterlogged != null || createdWhitelistItem.pistonBehavior != null || createdWhitelistItem.blastResistance != null || createdWhitelistItem.gravityColumn;
+    }
+
+    private void updateGravityColumnButton() {
+        boolean available = isGravityBlockInput();
+        gravityColumnButton.visible = available;
+        gravityColumnButton.active = available;
+        if (!available) {
+            createdWhitelistItem.gravityColumn = false;
+        }
+        gravityColumnButton.setMessage(Component.literal((createdWhitelistItem.gravityColumn ? "☑" : "□") + " 7+ column"));
+    }
+
+    private boolean isGravityBlockInput() {
+        String input = blockInput.getValue().trim();
+        try {
+            Identifier id = Identifier.parse(input);
+            return BuiltInRegistries.BLOCK.containsKey(id)
+                    && BuiltInRegistries.BLOCK.getValue(id) instanceof FallingBlock;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
 
@@ -210,6 +241,8 @@ public class WhitelistEditorScreen extends ScreenPlus {
         if(comparisonOperatorsWidget.getSelectedEntry() != null && !blastResistanceValue.getValue().isEmpty()){
             createdWhitelistItem.blastResistance = comparisonOperatorsWidget.getSelectedEntry() + blastResistanceValue.getValue();
         }else createdWhitelistItem.blastResistance = null;
+
+        updateGravityColumnButton();
 
         //borders
         context.renderOutline(20,20, 245, 265, CommonColors.LIGHT_GRAY);

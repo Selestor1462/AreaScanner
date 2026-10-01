@@ -22,6 +22,7 @@ import ru.obabok.client.Scan;
 import ru.obabok.client.gui.widgets.ToggelableWidgedDropDownList;
 import ru.obabok.client.models.ScreenPlus;
 import ru.obabok.client.network.ClientNetwork;
+import ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -142,6 +143,25 @@ public class ScanTaskScreen extends ScreenPlus {
         shareNameField = new EditBox(font, 20, shareY + 15, 160, 18, Component.empty());
         shareNameField.active = !Scan.isProcessing();
         addRenderableWidget(shareNameField);
+
+        Button lavaScanButton = Button.builder(Component.literal("Lava scan"), btn -> {
+            if (minecraft.player == null || minecraft.level == null) return;
+            if (Scan.isProcessing()) {
+                minecraft.player.displayClientMessage(Component.literal("Stop the current AreaScanner scan first"), false);
+                return;
+            }
+            BlockBox range = Scan.getRange();
+            if (range == null) {
+                minecraft.player.displayClientMessage(Component.literal("Set a scan area first"), false);
+                return;
+            }
+            AsyncObsidianScanner.startAsyncScan(minecraft.level, new net.minecraft.world.phys.AABB(
+                    range.min().getX(), range.min().getY(), range.min().getZ(),
+                    range.max().getX(), range.max().getY(), range.max().getZ()
+            ));
+        }).bounds(200, shareY + 14, 100, 20).build();
+        lavaScanButton.active = !Scan.isProcessing();
+        addRenderableWidget(lavaScanButton);
 
         //back button
         addRenderableWidget(Button.builder(Component.literal("Back"), btn -> minecraft.setScreen(parent)).bounds( 30, height - 30, 50, 20).build());

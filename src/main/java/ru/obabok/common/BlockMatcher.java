@@ -3,7 +3,9 @@ package ru.obabok.common;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.FluidState;
@@ -30,7 +32,14 @@ public class BlockMatcher {
         boolean meet = false;
         for (WhitelistItem whitelistItem : whitelist.whitelist) {
             boolean insideMeet = true;
+            boolean gravityColumnMatches = whitelistItem.block != null
+                    && whitelistItem.block == blockState.getBlock()
+                    && whitelistItem.block instanceof FallingBlock
+                    && hasGravityColumn(whitelistItem.block, pos, world);
             if (whitelistItem.block != null && whitelistItem.block != blockState.getBlock()) {
+                insideMeet = false;
+            }
+            if (whitelistItem.gravityColumn && !gravityColumnMatches) {
                 insideMeet = false;
             }
 
@@ -120,6 +129,21 @@ public class BlockMatcher {
             meet = meet || insideMeet;
         }
         return meet;
+    }
+
+    private static boolean hasGravityColumn(Block block, BlockPos pos, Level world) {
+        if (world == null) return false;
+
+        int height = 1;
+        for (int offset = 1; offset < 7 && height < 7; offset++) {
+            if (world.getBlockState(pos.above(offset)).getBlock() != block) break;
+            height++;
+        }
+        for (int offset = 1; offset < 7 && height < 7; offset++) {
+            if (world.getBlockState(pos.below(offset)).getBlock() != block) break;
+            height++;
+        }
+        return height >= 7;
     }
 
     public static Optional<Float> getBlastResistance(BlockState blockState, FluidState fluidState) {

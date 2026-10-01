@@ -11,6 +11,7 @@ public class WhitelistItem {
     public String waterlogged;
     public String blastResistance;
     public String pistonBehavior;
+    public boolean gravityColumn;
 
 
     public WhitelistItem(@Nullable Block _block, @Nullable String _waterlogged, @Nullable String _blastResistance, @Nullable String _pistonBehavior){
@@ -46,6 +47,9 @@ public class WhitelistItem {
         if(pistonBehavior != null){
             builder.append("pistonBehavior:").append(pistonBehavior);
         }
+        if(gravityColumn){
+            builder.append(" and gravityColumn:7+");
+        }
         builder.append("]");
         return builder.toString();
     }
@@ -58,6 +62,12 @@ public class WhitelistItem {
         return Objects.equals(block, that.block) &&
                 Objects.equals(waterlogged, that.waterlogged) &&
                 Objects.equals(blastResistance, that.blastResistance) &&
-                Objects.equals(pistonBehavior, that.pistonBehavior);
+                Objects.equals(pistonBehavior, that.pistonBehavior) &&
+                gravityColumn == that.gravityColumn;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(block, waterlogged, blastResistance, pistonBehavior, gravityColumn);
     }
 }

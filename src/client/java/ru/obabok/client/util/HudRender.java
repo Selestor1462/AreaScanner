@@ -10,6 +10,7 @@ import net.minecraft.util.CommonColors;
 import net.minecraft.world.level.ChunkPos;
 import ru.obabok.client.Config;
 import ru.obabok.client.Scan;
+import ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -64,6 +65,15 @@ public class HudRender {
                     LOGGER.error(exception.getMessage());
                 }
 
+            }
+
+            var lavobsidianChunks = AsyncObsidianScanner.getUnloadedChunks();
+            if (!lavobsidianChunks.isEmpty()) {
+                Iterator<ChunkPos> iterator = lavobsidianChunks.iterator();
+                if (iterator.hasNext()) {
+                    lines.add("Lavobsidian unchecked chunks: %d -> %s"
+                            .formatted(lavobsidianChunks.size(), iterator.next()));
+                }
             }
 
             RenderUtils.renderText(fromGuiGraphics(guiGraphics), Config.Hud.HUD_POS_X.getIntegerValue(), Config.Hud.HUD_POS_Y.getIntegerValue(), Config.Hud.HUD_SCALE.getFloatValue(), CommonColors.WHITE, CommonColors.BLACK, (HudAlignment)Config.Hud.HUD_ALIGNMENT.getOptionListValue(), false, false, lines);

@@ -3,6 +3,7 @@ package ru.obabok.client;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.fabricmc.fabric.api.event.client.player.ClientPlayerBlockBreakEvents;
@@ -15,6 +16,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.level.ChunkPos;
 import ru.obabok.client.network.ClientNetwork;
 import ru.obabok.client.util.*;
+import ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner;
 import ru.obabok.common.References;
 
 public class AreaScannerClient implements ClientModInitializer {
@@ -52,6 +54,7 @@ public class AreaScannerClient implements ClientModInitializer {
 			});
 
 			ClientChunkEvents.CHUNK_LOAD.register((clientWorld, worldChunk) -> {
+				AsyncObsidianScanner.onChunkLoaded(clientWorld, worldChunk.getPos());
 				BlockBox range = Scan.getRange();
 				if (range != null) {
 					ChunkPos chunkPos = worldChunk.getPos();
@@ -61,6 +64,12 @@ public class AreaScannerClient implements ClientModInitializer {
 							ChunkScheduler.addChunkToProcess(chunkPos);
 						}
 					}
+				}
+			});
+
+			ClientTickEvents.END_CLIENT_TICK.register(client -> {
+				if (client.player != null && client.level != null) {
+					AsyncObsidianScanner.removeMarkersNear(client.level, client.player.blockPosition());
 				}
 			});
 
