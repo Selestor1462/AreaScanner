@@ -369,10 +369,20 @@ public class FastScanJob {
         if (!isInRange(pos)) return;
         if (!scanCompleted && !scannedChunks.contains(ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4))) return;
 
-        boolean oldMatch = BlockMatcher.matches(whitelist, oldState, world, pos);
-        boolean newMatch = BlockMatcher.matches(whitelist, newState, world, pos);
-        if (oldMatch == newMatch) return;
-        queueDelta(pos, newMatch, oldState, newState);
+        int minY = Math.max(world.getMinY(), pos.getY() - 6);
+        int maxY = Math.min(world.getMaxY() - 1, pos.getY() + 6);
+        for (int y = minY; y <= maxY; y++) {
+            BlockPos affectedPos = new BlockPos(pos.getX(), y, pos.getZ());
+            if (!isInRange(affectedPos)) continue;
+
+            BlockState currentState = y == pos.getY() ? newState : world.getBlockState(affectedPos);
+            boolean oldMatch = selectedBlocks.contains(affectedPos.asLong());
+            boolean newMatch = BlockMatcher.matches(whitelist, currentState, world, affectedPos);
+            if (oldMatch != newMatch) {
+                BlockState previousState = y == pos.getY() ? oldState : currentState;
+                queueDelta(affectedPos, newMatch, previousState, currentState);
+            }
+        }
     }
 
     private void queueDelta(BlockPos pos, boolean add, BlockState oldState, BlockState newState) {
