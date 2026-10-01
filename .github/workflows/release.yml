@@ -70,6 +70,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out tagged repository
+        uses: actions/checkout@v6
+
       - name: Download version jars
         uses: actions/download-artifact@v7
         with:
