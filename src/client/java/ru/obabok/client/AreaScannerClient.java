@@ -4,6 +4,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.fabric.api.event.client.player.ClientPlayerBlockBreakEvents;
@@ -18,6 +19,7 @@ import ru.obabok.client.render.RenderUtil;
 import ru.obabok.common.model.BlockArea;
 import ru.obabok.client.network.ClientNetwork;
 import ru.obabok.client.util.*;
+import ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner;
 import ru.obabok.common.References;
 
 public class AreaScannerClient implements ClientModInitializer {
@@ -56,6 +58,7 @@ public class AreaScannerClient implements ClientModInitializer {
 			});
 
 			ClientChunkEvents.CHUNK_LOAD.register((clientWorld, worldChunk) -> {
+				AsyncObsidianScanner.onChunkLoaded(clientWorld, worldChunk.getPos());
 				BlockArea area = Scan.getArea();
 				if (area == null) return;
 
@@ -65,6 +68,12 @@ public class AreaScannerClient implements ClientModInitializer {
 
 				if (Scan.isProcessing()) {
 					ChunkScheduler.addChunkToProcess(chunkPos);
+				}
+			});
+
+			ClientTickEvents.END_CLIENT_TICK.register(client -> {
+				if (client.player != null && client.level != null) {
+					AsyncObsidianScanner.removeMarkersNear(client.level, client.player.blockPosition());
 				}
 			});
 

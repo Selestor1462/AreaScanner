@@ -8,7 +8,6 @@ import fi.dy.masa.malilib.gui.button.IButtonActionListener;
 import fi.dy.masa.malilib.util.StringUtils;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import net.minecraft.sounds.SoundEvents;
 import ru.obabok.client.Config;
 import ru.obabok.client.network.ClientNetwork;
 import ru.obabok.common.References;
@@ -35,19 +34,6 @@ public class ConfigGui extends GuiConfigsBase {
         {
             x += this.createButton(x, y, -1, tab) + 2;
         }
-        ButtonGeneric testBtn = new ButtonGeneric(width - 75, getScreenHeight() - 30, 65, 20, "Test");
-        this.addButton(testBtn, (btn, mousebtn)->{
-            minecraft.player.playSound(SoundEvents.AMBIENT_CAVE.value());
-            onClose();
-            //minecraft.setScreenAndShow(new AlertScreen(() -> {onClose();}, Component.literal("Ты кому звониш?"), Component.literal("а?"), Component.literal("Тебе"), true));
-            //minecraft.setScreenAndShow(new TitleScreen(true, null));
-            //onClose();
-//            if(Scan.getRange() != null){
-//                AsyncObsidianScanner.startAsyncScan(Minecraft.getInstance().level, Scan.getRange().aabb());
-//            }
-        });
-
-
         ButtonGeneric whitelistsButton = new ButtonGeneric(10, getScreenHeight() - 30, 65, 20, "Whitelists");
         this.addButton(whitelistsButton, (button1, mouseButton) -> openGui(new WhitelistSelectorScreen(this, 0)));
         ButtonGeneric taskButton = new ButtonGeneric(85, getScreenHeight() - 30, 40, 20, "Task");
