@@ -35,7 +35,7 @@ public class Scan {
     private static long remoteChunkProcessedCounter;
     private static long allChunksCounter;
     private static String currentFilename;
-    public static boolean renderDirty = true;
+    public static volatile boolean renderDirty = true;
 
     public enum PistonBehavior {
             NORMAL,

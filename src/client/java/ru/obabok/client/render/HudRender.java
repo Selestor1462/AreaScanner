@@ -21,6 +21,7 @@ import net.minecraft.world.phys.Vec3;
 import ru.obabok.client.Config;
 import ru.obabok.client.Scan;
 import ru.obabok.client.util.ChunkScheduler;
+import ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner;
 
 import java.util.*;
 
@@ -123,6 +124,14 @@ public class HudRender {
                     LOGGER.error(exception.getMessage());
                 }
 
+            }
+            Set<ChunkPos> lavobsidianChunks = AsyncObsidianScanner.getUnloadedChunks();
+            if (!lavobsidianChunks.isEmpty()) {
+                Iterator<ChunkPos> iterator = lavobsidianChunks.iterator();
+                if (iterator.hasNext()) {
+                    lines.add(Component.literal("Lavobsidian unchecked chunks: %d -> %s"
+                            .formatted(lavobsidianChunks.size(), iterator.next())));
+                }
             }
             if (Config.Hud.HUD_RENDER_TIME.getBooleanValue()){
                 long now = System.currentTimeMillis();
