@@ -1,0 +1,83 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Minecraft ${{ matrix.minecraft }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ref: 26.3
+            minecraft: '26.3'
+            java: '25'
+          - ref: 1.21.11-fix
+            minecraft: '1.21.11'
+            java: '21'
+    steps:
+      - name: Check out version branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ matrix.ref }}
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: microsoft
+          java-version: ${{ matrix.java }}
+          cache: gradle
+
+      - name: Build mod
+        run: ./gradlew --no-daemon build
+
+      - name: Prepare release jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+          jar_file="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' -print -quit)"
+          if [[ -z "$jar_file" ]]; then
+            echo "No remapped mod jar found in build/libs" >&2
+            exit 1
+          fi
+          cp "$jar_file" "release-artifacts/AreaScanner-${{ matrix.minecraft }}.jar"
+
+      - name: Upload release jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.minecraft }}
+          path: release-artifacts/*.jar
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download version jars
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-artifacts/*.jar --verify-tag --title "AreaScanner $GITHUB_REF_NAME" --generate-notes
