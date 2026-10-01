@@ -159,7 +159,7 @@ public class ScanTaskScreen extends ScreenPlus {
                     range.min().getX(), range.min().getY(), range.min().getZ(),
                     range.max().getX(), range.max().getY(), range.max().getZ()
             ));
-        }).bounds(200, shareY + 14, 100, 20).build();
+        }).bounds(90, height - 55, 80, 20).build();
         lavaScanButton.active = !Scan.isProcessing();
         addRenderableWidget(lavaScanButton);
 
