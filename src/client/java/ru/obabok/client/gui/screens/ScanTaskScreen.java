@@ -248,9 +248,13 @@ public class ScanTaskScreen extends ScreenPlus {
                 ClientNetwork.stopScan();
             }
             Scan.stopScan();
+            if (ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()) {
+                ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.stopAndClear();
+            }
             minecraft.setScreenAndShow(new ScanTaskScreen(parent, box));
         }).bounds(180, height - 30, 80, 20).build();
-        stopScanBtn.active = Scan.isProcessing() || Scan.isRemoteProcessing();
+        stopScanBtn.active = Scan.isProcessing() || Scan.isRemoteProcessing()
+                || ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear();
         addRenderableWidget(stopScanBtn);
 
         Button saveStateBtn = Button.builder(Component.literal("Save state"), btn -> {

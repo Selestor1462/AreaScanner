@@ -17,10 +17,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class AsyncObsidianScanner {
     private static final AtomicBoolean running = new AtomicBoolean();
+    private static final AtomicLong generation = new AtomicLong();
     private static final Set<BlockPos> lavaMarkers = new HashSet<>();
     private static final Set<ChunkPos> unloadedChunks = ConcurrentHashMap.newKeySet();
     private static volatile PendingObsidianScan pendingScan;
@@ -53,6 +55,7 @@ public class AsyncObsidianScanner {
             });
             return;
         }
+        long runId = generation.incrementAndGet();
 
         try {
             pendingScan = new PendingObsidianScan(world, ranges);
@@ -63,11 +66,12 @@ public class AsyncObsidianScanner {
             unloadedChunks.removeAll(pendingScan.getCapturedChunks());
             Scan.renderDirty = true;
             if (pendingScan.allChunksCaptured()) {
-                beginScan(pendingScan);
+                beginScan(pendingScan, runId);
             } else {
                 report("[Lavobsidian] Waiting for chunks in the scan area. Visit the area to load them.");
             }
         } catch (RuntimeException exception) {
+            if (generation.get() != runId) return;
             pendingScan = null;
             unloadedChunks.clear();
             Scan.renderDirty = true;
@@ -78,6 +82,7 @@ public class AsyncObsidianScanner {
 
     public static void onChunkLoaded(Level world, ChunkPos chunkPos) {
         PendingObsidianScan request = pendingScan;
+        long runId = generation.get();
         if (request == null || chunkPos == null) return;
         if (Minecraft.getInstance().level != request.world) {
             pendingScan = null;
@@ -92,11 +97,11 @@ public class AsyncObsidianScanner {
             unloadedChunks.remove(chunkPos);
             Scan.renderDirty = true;
         }
-        if (request.allChunksCaptured()) beginScan(request);
+        if (request.allChunksCaptured()) beginScan(request, runId);
     }
 
-    private static void beginScan(PendingObsidianScan request) {
-        if (pendingScan != request) return;
+    private static void beginScan(PendingObsidianScan request, long runId) {
+        if (pendingScan != request || generation.get() != runId) return;
         pendingScan = null;
         unloadedChunks.clear();
         Scan.renderDirty = true;
@@ -126,6 +131,7 @@ public class AsyncObsidianScanner {
                 }
             } catch (RuntimeException exception) {
                 Minecraft.getInstance().execute(() -> {
+                    if (generation.get() != runId) return;
                     running.set(false);
                     unloadedChunks.clear();
                     Scan.renderDirty = true;
@@ -136,6 +142,7 @@ public class AsyncObsidianScanner {
 
             Minecraft.getInstance().execute(() -> {
                 try {
+                    if (generation.get() != runId) return;
                     if (Minecraft.getInstance().level == request.world) {
                         for (BlockPos marker : results) {
                             if (Scan.selectedBlocks.add(marker)) lavaMarkers.add(marker);
@@ -147,9 +154,11 @@ public class AsyncObsidianScanner {
                         report("[Lavobsidian] Scan results discarded because the world changed");
                     }
                 } finally {
-                    unloadedChunks.clear();
-                    Scan.renderDirty = true;
-                    running.set(false);
+                    if (generation.get() == runId) {
+                        unloadedChunks.clear();
+                        Scan.renderDirty = true;
+                        running.set(false);
+                    }
                 }
             });
         }, "Lavobsidian-Predictor");
@@ -203,5 +212,24 @@ public class AsyncObsidianScanner {
 
     public static Set<ChunkPos> getUnloadedChunks() {
         return new HashSet<>(unloadedChunks);
+    }
+
+    public static boolean canStopOrClear() {
+        return running.get() || !lavaMarkers.isEmpty() || !unloadedChunks.isEmpty();
+    }
+
+    public static void stopAndClear() {
+        generation.incrementAndGet();
+        pendingScan = null;
+        unloadedChunks.clear();
+        running.set(false);
+        int removed = lavaMarkers.size();
+        for (BlockPos marker : lavaMarkers) {
+            Scan.selectedBlocks.remove(marker);
+        }
+        lavaMarkers.clear();
+        markerWorld = null;
+        Scan.renderDirty = true;
+        if (removed > 0) reportActionBar("[Lavobsidian] Cleared " + removed + " markers");
     }
 }
