@@ -83,7 +83,7 @@ public class ObsidianScanner {
         if (state.getFluidState().getType() == Fluids.LAVA && state.getFluidState().isSource()) flags |= LAVA_SOURCE;
         if (AIRLIKE.contains(state.getBlock())) flags |= AIRLIKE_BLOCK;
         if (LOW_BLAST_RES_TERRAIN.contains(state.getBlock())) flags |= LOW_TERRAIN;
-        if (isBlastResistant(state.getBlock(), waterlogged)) flags |= BLAST_RESISTANT;
+        if (TOUGH_BLOCKS.contains(state.getBlock())) flags |= BLAST_RESISTANT;
         if (state.is(Blocks.WATER)) flags |= WATER_BLOCK;
         if (bubbleColumn) flags |= BUBBLE_COLUMN;
         if (waterlogged) flags |= WATERLOGGED;
@@ -92,9 +92,7 @@ public class ObsidianScanner {
 
     public static boolean isBlastResistantState(BlockState state) {
         if (state == null) return false;
-        boolean waterlogged = state.hasProperty(BlockStateProperties.WATERLOGGED)
-                && state.getValue(BlockStateProperties.WATERLOGGED);
-        return isBlastResistant(state.getBlock(), waterlogged);
+        return TOUGH_BLOCKS.contains(state.getBlock());
     }
 
     public static LavaMarker.Type getBlastResistantType(BlockState state) {

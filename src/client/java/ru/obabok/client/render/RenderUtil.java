@@ -207,7 +207,7 @@ public class RenderUtil {
         }
     }
 
-    private static Vec3 getLookDirection(Quaternionf orientation) {
+    public static Vec3 getLookDirection(Quaternionf orientation) {
         org.joml.Vector3f forward = new org.joml.Vector3f(0, 0, -1);
         orientation.transform(forward);
         return new Vec3(forward.x, forward.y, forward.z);

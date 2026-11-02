@@ -10,10 +10,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Quaternionf;
 import ru.obabok.client.Scan;
 import ru.obabok.client.render.RenderUtil;
 import ru.obabok.common.model.BlockArea;
@@ -205,14 +207,17 @@ public class AsyncObsidianScanner {
         tickCounter++;
         if (tickCounter % 4 != 0) return;
 
+        BlockPos playerPos = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.blockPosition() : null;
+        if (playerPos == null) return;
+
         List<LavaMarker> toRemove = new ArrayList<>();
         for (LavaMarker marker : waypoints) {
             if (marker.type == LavaMarker.Type.LAVA_WAYPOINT) {
-                if (isLavaCleared(world, marker.trackedLavaBlocks)) {
+                if (isLavaCleared(world, marker.pos, marker.trackedLavaBlocks, playerPos)) {
                     toRemove.add(marker);
                 }
             } else {
-                if (isBlastResistantCleared(world, marker.pos)) {
+                if (isBlastResistantCleared(world, marker.pos, playerPos)) {
                     toRemove.add(marker);
                 }
             }
@@ -232,29 +237,60 @@ public class AsyncObsidianScanner {
         }
     }
 
-    private static boolean isLavaCleared(Level world, Set<BlockPos> trackedLava) {
-        if (trackedLava.isEmpty()) return true;
+    private static boolean isLavaCleared(Level world, BlockPos waypointPos, Set<BlockPos> trackedLava, BlockPos playerPos) {
+        if (trackedLava.isEmpty() || playerPos == null) return false;
+
+        // The player must be within reasonable interaction proximity of this waypoint!
+        // If the player is far away, they cannot have cleared this lava formation.
+        long dx = (long) waypointPos.getX() - playerPos.getX();
+        long dy = (long) waypointPos.getY() - playerPos.getY();
+        long dz = (long) waypointPos.getZ() - playerPos.getZ();
+        if (dx * dx + dy * dy + dz * dz > 20 * 20) {
+            return false;
+        }
+
+        boolean checkedAny = false;
         for (BlockPos pos : trackedLava) {
-            if (!world.hasChunkAt(pos)) {
+            int cx = pos.getX() >> 4;
+            int cz = pos.getZ() >> 4;
+            // Reliably check if chunk is loaded on client chunk source
+            if (world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false) == null) {
                 return false;
             }
+
             FluidState fluid = world.getFluidState(pos);
             if (fluid.is(Fluids.LAVA)) {
-                return false;
+                return false; // Still contains lava!
             }
+            checkedAny = true;
         }
-        return true;
+        return checkedAny;
     }
 
-    private static boolean isBlastResistantCleared(Level world, BlockPos pos) {
-        if (!world.hasChunkAt(pos)) return false;
+    private static boolean isBlastResistantCleared(Level world, BlockPos pos, BlockPos playerPos) {
+        if (playerPos == null) return false;
+
+        // Player must be within mining proximity
+        long dx = (long) pos.getX() - playerPos.getX();
+        long dy = (long) pos.getY() - playerPos.getY();
+        long dz = (long) pos.getZ() - playerPos.getZ();
+        if (dx * dx + dy * dy + dz * dz > 10 * 10) {
+            return false;
+        }
+
+        int cx = pos.getX() >> 4;
+        int cz = pos.getZ() >> 4;
+        if (world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false) == null) {
+            return false;
+        }
+
         BlockState state = world.getBlockState(pos);
-        return !ObsidianScanner.isBlastResistantState(state);
+        return state.isAir() || !ObsidianScanner.isBlastResistantState(state);
     }
 
     private static void recheckLocalArea(Level world, BlockPos center) {
-        int radiusXZ = 14;
-        int radiusY = 10;
+        int radiusXZ = 10;
+        int radiusY = 8;
         int minX = center.getX() - radiusXZ;
         int maxX = center.getX() + radiusXZ;
         int minY = Math.max(world.getMinY(), center.getY() - radiusY);
@@ -269,7 +305,7 @@ public class AsyncObsidianScanner {
 
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                if (!world.hasChunk(cx, cz)) {
+                if (world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false) == null) {
                     reportActionBar("[Lavobsidian] Cleared waypoint (all lava resolved)");
                     return;
                 }
@@ -307,6 +343,7 @@ public class AsyncObsidianScanner {
             Minecraft.getInstance().execute(() -> {
                 if (generation.get() != runId || Minecraft.getInstance().level != world) return;
 
+                BlockPos currentPPos = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.blockPosition() : null;
                 int newFormationsCount = 0;
                 for (LavaMarker newMarker : output.waypoints) {
                     if (newMarker.type == LavaMarker.Type.LAVA_WAYPOINT) {
@@ -317,7 +354,7 @@ public class AsyncObsidianScanner {
                                 break;
                             }
                         }
-                        if (!alreadyCovered && !isLavaCleared(world, newMarker.trackedLavaBlocks)) {
+                        if (!alreadyCovered && !isLavaCleared(world, newMarker.pos, newMarker.trackedLavaBlocks, currentPPos)) {
                             waypoints.add(newMarker);
                             predictedObsidianBlocks.addAll(newMarker.predictedObsidianBlocks);
                             newFormationsCount++;
@@ -344,19 +381,49 @@ public class AsyncObsidianScanner {
         if (!hasRenderableMarkers()) return;
         PoseStack matrices = context.poseStack();
         Vec3 camera = context.levelState().cameraRenderState.pos;
+        Quaternionf orientation = context.levelState().cameraRenderState.orientation;
+        Vec3 lookDirection = RenderUtil.getLookDirection(orientation);
 
-        // 1. Render predicted obsidian blocks (fiery orange)
+        // 1. Render predicted obsidian blocks ONLY when close (<= 48 blocks) to prevent quad sorting lag
         Color4f obsidianColor = LavaMarker.Type.PREDICTED_OBSIDIAN.defaultColor;
         for (BlockPos pos : predictedObsidianBlocks) {
+            double relX = pos.getX() + 0.5 - camera.x;
+            double relY = pos.getY() + 0.5 - camera.y;
+            double relZ = pos.getZ() + 0.5 - camera.z;
+            double distSq = relX * relX + relZ * relZ;
+
+            // Distance culling for detailed obsidian prediction blocks
+            if (distSq > 48 * 48) continue;
+
+            double dist = Math.sqrt(distSq + relY * relY);
+            if (dist > 0.1) {
+                double dot = (relX * lookDirection.x + relY * lookDirection.y + relZ * lookDirection.z) / dist;
+                if (dot < -0.2) continue; // Frustum culling
+            }
+
             RenderUtil.newRenderFilledBox(matrices.last().pose(),
                     pos.getX(), pos.getY(), pos.getZ(),
                     pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1,
                     camera, obsidianColor);
         }
 
-        // 2. Render waypoints (lava pool centers & blast resistant blocks)
+        // 2. Render waypoints (main markers) with distance & frustum culling
         for (LavaMarker marker : waypoints) {
             BlockPos pos = marker.pos;
+            double relX = pos.getX() + 0.5 - camera.x;
+            double relY = pos.getY() + 0.5 - camera.y;
+            double relZ = pos.getZ() + 0.5 - camera.z;
+            double distSq = relX * relX + relZ * relZ;
+
+            // Distance culling (160 blocks)
+            if (distSq > 160 * 160) continue;
+
+            double dist = Math.sqrt(distSq + relY * relY);
+            if (dist > 0.1) {
+                double dot = (relX * lookDirection.x + relY * lookDirection.y + relZ * lookDirection.z) / dist;
+                if (dot < -0.2) continue; // Frustum culling
+            }
+
             RenderUtil.newRenderFilledBox(matrices.last().pose(),
                     pos.getX(), pos.getY(), pos.getZ(),
                     pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1,
