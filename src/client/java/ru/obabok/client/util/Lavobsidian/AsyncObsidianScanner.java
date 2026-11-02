@@ -38,8 +38,46 @@ public class AsyncObsidianScanner {
     private static final Set<ChunkPos> unloadedChunks = ConcurrentHashMap.newKeySet();
 
     private static volatile PendingObsidianScan pendingScan;
-    private static Level markerWorld;
+    private static String markerDimension;
+    private static boolean initialized = false;
     private static int tickCounter = 0;
+
+    public static void ensureInitialized() {
+        if (!initialized) {
+            initialized = true;
+            loadFromDisk();
+        }
+    }
+
+    public static void loadFromDisk() {
+        LavaScanState saved = LavaScanState.load();
+        if (saved != null && saved.waypoints != null && !saved.waypoints.isEmpty()) {
+            waypoints.clear();
+            for (LavaScanState.LavaMarkerDto dto : saved.waypoints) {
+                if (dto.pos != null) {
+                    waypoints.add(dto.toMarker());
+                }
+            }
+            predictedObsidianBlocks.clear();
+            if (saved.predictedObsidian != null) {
+                predictedObsidianBlocks.addAll(saved.predictedObsidian);
+            }
+            rememberedWaterFlows.clear();
+            if (saved.rememberedFlows != null) {
+                rememberedWaterFlows.addAll(saved.rememberedFlows);
+            }
+            markerDimension = saved.dimension;
+            Scan.renderDirty = true;
+        }
+    }
+
+    public static void saveCurrentState() {
+        if (markerDimension != null && !waypoints.isEmpty()) {
+            LavaScanState.save(markerDimension, waypoints, predictedObsidianBlocks, rememberedWaterFlows);
+        } else {
+            LavaScanState.delete();
+        }
+    }
 
     public static void startAsyncScan(Level world, AABB range) {
         if (range == null) return;
@@ -168,20 +206,17 @@ public class AsyncObsidianScanner {
             Minecraft.getInstance().execute(() -> {
                 try {
                     if (generation.get() != runId) return;
-                    if (Minecraft.getInstance().level == request.world) {
-                        waypoints.clear();
-                        predictedObsidianBlocks.clear();
-                        rememberedWaterFlows.clear();
+                    waypoints.clear();
+                    predictedObsidianBlocks.clear();
+                    rememberedWaterFlows.clear();
 
-                        waypoints.addAll(scannedWaypoints);
-                        predictedObsidianBlocks.addAll(scannedObsidian);
-                        rememberedWaterFlows.addAll(scannedFlows);
-                        markerWorld = request.world;
-                        Scan.renderDirty = true;
-                        report("[Lavobsidian] Scan complete. Found " + waypoints.size() + " waypoints (" + predictedObsidianBlocks.size() + " predicted obsidian blocks)");
-                    } else {
-                        report("[Lavobsidian] Scan results discarded because the world changed");
-                    }
+                    waypoints.addAll(scannedWaypoints);
+                    predictedObsidianBlocks.addAll(scannedObsidian);
+                    rememberedWaterFlows.addAll(scannedFlows);
+                    markerDimension = request.world.dimension().identifier().toString();
+                    saveCurrentState();
+                    Scan.renderDirty = true;
+                    report("[Lavobsidian] Scan complete. Found " + waypoints.size() + " waypoints (" + predictedObsidianBlocks.size() + " predicted obsidian blocks)");
                 } finally {
                     if (generation.get() == runId) {
                         unloadedChunks.clear();
@@ -197,11 +232,16 @@ public class AsyncObsidianScanner {
     }
 
     public static void tick(Level world) {
+        ensureInitialized();
         if (world == null || (waypoints.isEmpty() && predictedObsidianBlocks.isEmpty())) return;
-        if (markerWorld != world) {
-            stopAndClear();
-            markerWorld = world;
+
+        String currentDim = world.dimension().identifier().toString();
+        if (markerDimension != null && !markerDimension.equals(currentDim)) {
+            // In another dimension; pause ticking without clearing markers
             return;
+        }
+        if (markerDimension == null) {
+            markerDimension = currentDim;
         }
 
         tickCounter++;
@@ -233,6 +273,7 @@ public class AsyncObsidianScanner {
                     reportActionBar("[Lavobsidian] Cleared marker at " + marker.pos.toShortString());
                 }
             }
+            saveCurrentState();
             Scan.renderDirty = true;
         }
     }
@@ -362,6 +403,7 @@ public class AsyncObsidianScanner {
                     }
                 }
                 rememberedWaterFlows.addAll(output.waterFlowPoints);
+                saveCurrentState();
 
                 if (newFormationsCount > 0) {
                     Scan.renderDirty = true;
@@ -374,11 +416,18 @@ public class AsyncObsidianScanner {
     }
 
     public static boolean hasRenderableMarkers() {
+        ensureInitialized();
         return !waypoints.isEmpty() || !predictedObsidianBlocks.isEmpty();
     }
 
     public static void render(LevelRenderContext context) {
         if (!hasRenderableMarkers()) return;
+        if (Minecraft.getInstance().level != null && markerDimension != null) {
+            String currentDim = Minecraft.getInstance().level.dimension().identifier().toString();
+            if (!markerDimension.equals(currentDim)) {
+                return;
+            }
+        }
         PoseStack matrices = context.poseStack();
         Vec3 camera = context.levelState().cameraRenderState.pos;
         Quaternionf orientation = context.levelState().cameraRenderState.orientation;
@@ -452,10 +501,12 @@ public class AsyncObsidianScanner {
     }
 
     public static int getMarkerCount() {
+        ensureInitialized();
         return waypoints.size();
     }
 
     public static BlockPos getNearestMarker(BlockPos playerPos) {
+        ensureInitialized();
         if (waypoints.isEmpty()) return null;
         if (playerPos == null) return waypoints.get(0).pos;
 
@@ -475,7 +526,8 @@ public class AsyncObsidianScanner {
     }
 
     public static boolean canStopOrClear() {
-        return running.get() || !waypoints.isEmpty() || !predictedObsidianBlocks.isEmpty() || !unloadedChunks.isEmpty();
+        ensureInitialized();
+        return running.get() || !waypoints.isEmpty() || !predictedObsidianBlocks.isEmpty() || !unloadedChunks.isEmpty() || LavaScanState.hasSavedScan();
     }
 
     public static void stopAndClear() {
@@ -487,7 +539,8 @@ public class AsyncObsidianScanner {
         waypoints.clear();
         predictedObsidianBlocks.clear();
         rememberedWaterFlows.clear();
-        markerWorld = null;
+        markerDimension = null;
+        LavaScanState.delete();
         Scan.renderDirty = true;
         if (removed > 0) reportActionBar("[Lavobsidian] Cleared all lava markers");
     }
