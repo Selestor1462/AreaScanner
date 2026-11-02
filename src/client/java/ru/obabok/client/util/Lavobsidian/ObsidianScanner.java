@@ -341,29 +341,10 @@ public class ObsidianScanner {
     }
 
     private static void findBlastResistantMarkers(Set<BlockPos> blocks, Map<BlockPos, LavaMarker.Type> specialBlocks, List<LavaMarker> waypoints) {
-        while (!blocks.isEmpty()) {
-            BlockPos initial = blocks.iterator().next();
-            blocks.remove(initial);
-            Deque<BlockPos> queue = new ArrayDeque<>();
-            queue.addLast(initial);
-
-            LavaMarker.Type bestType = specialBlocks != null && specialBlocks.containsKey(initial)
-                    ? specialBlocks.get(initial) : LavaMarker.Type.TOUGH_BLOCK;
-
-            while (!queue.isEmpty()) {
-                BlockPos current = queue.removeFirst();
-                if (specialBlocks != null && specialBlocks.containsKey(current)) {
-                    LavaMarker.Type curType = specialBlocks.get(current);
-                    if (curType.ordinal() < bestType.ordinal()) {
-                        bestType = curType;
-                    }
-                }
-                for (Direction direction : DIRECTIONS) {
-                    BlockPos neighbor = current.relative(direction);
-                    if (blocks.remove(neighbor)) queue.addLast(neighbor);
-                }
-            }
-            waypoints.add(new LavaMarker(initial, bestType));
+        for (BlockPos pos : blocks) {
+            LavaMarker.Type type = specialBlocks != null && specialBlocks.containsKey(pos)
+                    ? specialBlocks.get(pos) : LavaMarker.Type.TOUGH_BLOCK;
+            waypoints.add(new LavaMarker(pos, type));
         }
     }
 
