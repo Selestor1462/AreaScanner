@@ -18,8 +18,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class LavaScanState {
+    private static final ExecutorService SAVE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "Lavobsidian-Save-Worker");
+        t.setDaemon(true);
+        return t;
+    });
+
     private static final Gson GSON = new GsonBuilder()
             .registerTypeAdapter(BlockPos.class, new BlockPosSerializer())
             .registerTypeAdapter(ChunkPos.class, new ChunkPosSerializer())
@@ -74,14 +82,16 @@ public class LavaScanState {
             state.waypoints.add(new LavaMarkerDto(m));
         }
 
-        try {
-            Files.createDirectories(configPath.getParent());
-            try (Writer writer = Files.newBufferedWriter(configPath, StandardCharsets.UTF_8)) {
-                GSON.toJson(state, writer);
+        SAVE_EXECUTOR.submit(() -> {
+            try {
+                Files.createDirectories(configPath.getParent());
+                try (Writer writer = Files.newBufferedWriter(configPath, StandardCharsets.UTF_8)) {
+                    GSON.toJson(state, writer);
+                }
+            } catch (IOException e) {
+                References.LOGGER.error("Failed to save lava scan: " + e.getMessage());
             }
-        } catch (IOException e) {
-            References.LOGGER.error("Failed to save lava scan: " + e.getMessage());
-        }
+        });
     }
 
     public static LavaScanState load() {
@@ -95,8 +105,10 @@ public class LavaScanState {
     }
 
     public static void delete() {
-        try {
-            Files.deleteIfExists(configPath);
-        } catch (IOException ignored) {}
+        SAVE_EXECUTOR.submit(() -> {
+            try {
+                Files.deleteIfExists(configPath);
+            } catch (IOException ignored) {}
+        });
     }
 }

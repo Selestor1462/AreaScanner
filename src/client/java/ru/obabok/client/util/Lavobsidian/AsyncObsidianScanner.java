@@ -324,15 +324,23 @@ public class AsyncObsidianScanner {
         }
 
         boolean checkedAny = false;
+        int lastCx = Integer.MIN_VALUE;
+        int lastCz = Integer.MIN_VALUE;
+        net.minecraft.world.level.chunk.ChunkAccess chunk = null;
+
         for (BlockPos pos : trackedLava) {
             int cx = pos.getX() >> 4;
             int cz = pos.getZ() >> 4;
-            // Reliably check if chunk is loaded on client chunk source
-            if (world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false) == null) {
-                return false;
+            if (cx != lastCx || cz != lastCz) {
+                lastCx = cx;
+                lastCz = cz;
+                chunk = world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false);
+                if (chunk == null) {
+                    return false;
+                }
             }
 
-            FluidState fluid = world.getFluidState(pos);
+            FluidState fluid = chunk.getFluidState(pos);
             if (fluid.is(Fluids.LAVA)) {
                 return false; // Still contains lava!
             }
@@ -354,17 +362,18 @@ public class AsyncObsidianScanner {
 
         int cx = pos.getX() >> 4;
         int cz = pos.getZ() >> 4;
-        if (world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false) == null) {
+        net.minecraft.world.level.chunk.ChunkAccess chunk = world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false);
+        if (chunk == null) {
             return false;
         }
 
-        BlockState state = world.getBlockState(pos);
+        BlockState state = chunk.getBlockState(pos);
         return state.isAir() || !ObsidianScanner.isBlastResistantState(state);
     }
 
     private static void recheckLocalArea(Level world, BlockPos center) {
-        int radiusXZ = 14;
-        int radiusY = 9;
+        int radiusXZ = 8;
+        int radiusY = 5;
         int minX = center.getX() - radiusXZ;
         int maxX = center.getX() + radiusXZ;
         int minY = Math.max(world.getMinY(), center.getY() - radiusY);
@@ -377,12 +386,18 @@ public class AsyncObsidianScanner {
         int minChunkZ = minZ >> 4;
         int maxChunkZ = maxZ >> 4;
 
+        int numChunksX = maxChunkX - minChunkX + 1;
+        int numChunksZ = maxChunkZ - minChunkZ + 1;
+        net.minecraft.world.level.chunk.ChunkAccess[] chunks = new net.minecraft.world.level.chunk.ChunkAccess[numChunksX * numChunksZ];
+
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                if (world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false) == null) {
+                net.minecraft.world.level.chunk.ChunkAccess chunk = world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false);
+                if (chunk == null) {
                     reportActionBar("[Lavobsidian] Cleared all nearby waypoints");
                     return;
                 }
+                chunks[(cx - minChunkX) * numChunksZ + (cz - minChunkZ)] = chunk;
             }
         }
 
@@ -397,9 +412,12 @@ public class AsyncObsidianScanner {
 
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
+                int cxIdx = (x >> 4) - minChunkX;
                 for (int z = minZ; z <= maxZ; z++) {
+                    int czIdx = (z >> 4) - minChunkZ;
+                    net.minecraft.world.level.chunk.ChunkAccess chunk = chunks[cxIdx * numChunksZ + czIdx];
                     mpos.set(x, y, z);
-                    BlockState state = world.getBlockState(mpos);
+                    BlockState state = chunk.getBlockState(mpos);
                     int idx = ((y - minY) * width + (x - minX)) * depth + (z - minZ);
                     blockData[idx] = ObsidianScanner.classify(state);
                     if (ObsidianScanner.isBlastResistantState(state)) {
