@@ -80,7 +80,8 @@ final class PendingObsidianScan {
     private boolean captureChunk(RegionSnapshot region, int chunkX, int chunkZ) {
         long key = chunkKey(chunkX, chunkZ);
         if (!region.requiredChunks.contains(key) || region.capturedChunks.contains(key)) return false;
-        if (world.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false) == null) return false;
+        net.minecraft.world.level.chunk.ChunkAccess chunk = world.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
+        if (chunk == null) return false;
 
         int minX = Math.max(region.minX, chunkX << 4);
         int maxX = Math.min(region.maxX, (chunkX << 4) + 15);
@@ -91,7 +92,7 @@ final class PendingObsidianScan {
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     pos.set(x, y, z);
-                    BlockState state = world.getBlockState(pos);
+                    BlockState state = chunk.getBlockState(pos);
                     region.blocks[region.index(x, y, z)] = ObsidianScanner.classify(state);
                     if (ObsidianScanner.isBlastResistantState(state)) {
                         region.specialBlocks.put(pos.immutable(), ObsidianScanner.getBlastResistantType(state));

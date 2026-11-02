@@ -41,6 +41,8 @@ public class AsyncObsidianScanner {
     private static String markerDimension;
     private static boolean initialized = false;
     private static int tickCounter = 0;
+    private static final AtomicBoolean isRechecking = new AtomicBoolean(false);
+    private static final Map<BlockPos, Long> recentRechecks = new ConcurrentHashMap<>();
 
     public static void ensureInitialized() {
         if (!initialized) {
@@ -67,7 +69,6 @@ public class AsyncObsidianScanner {
                 rememberedWaterFlows.addAll(saved.rememberedFlows);
             }
             markerDimension = saved.dimension;
-            Scan.renderDirty = true;
         }
     }
 
@@ -215,12 +216,10 @@ public class AsyncObsidianScanner {
                     rememberedWaterFlows.addAll(scannedFlows);
                     markerDimension = request.world.dimension().identifier().toString();
                     saveCurrentState();
-                    Scan.renderDirty = true;
                     report("[Lavobsidian] Scan complete. Found " + waypoints.size() + " waypoints (" + predictedObsidianBlocks.size() + " predicted obsidian blocks)");
                 } finally {
                     if (generation.get() == runId) {
                         unloadedChunks.clear();
-                        Scan.renderDirty = true;
                         running.set(false);
                     }
                 }
@@ -265,6 +264,7 @@ public class AsyncObsidianScanner {
 
         if (!toRemove.isEmpty()) {
             List<BlockPos> recheckPositions = new ArrayList<>();
+            long now = System.currentTimeMillis();
 
             for (LavaMarker marker : toRemove) {
                 waypoints.remove(marker);
@@ -275,24 +275,28 @@ public class AsyncObsidianScanner {
                     reportActionBar("[Lavobsidian] Cleared waypoint (" + remainingNearby + " nearby remaining)");
                 } else {
                     // All nearby waypoints in this area have been removed!
-                    boolean alreadyCovered = false;
-                    for (BlockPos center : recheckPositions) {
-                        if (center.closerThan(marker.pos, 14.0)) {
-                            alreadyCovered = true;
-                            break;
+                    if (now - recentRechecks.getOrDefault(marker.pos, 0L) >= 4000L) {
+                        boolean alreadyCovered = false;
+                        for (BlockPos center : recheckPositions) {
+                            if (center.closerThan(marker.pos, 14.0)) {
+                                alreadyCovered = true;
+                                break;
+                            }
                         }
-                    }
-                    if (!alreadyCovered) {
-                        recheckPositions.add(marker.pos);
+                        if (!alreadyCovered) {
+                            recheckPositions.add(marker.pos);
+                            recentRechecks.put(marker.pos, now);
+                        }
+                    } else {
+                        reportActionBar("[Lavobsidian] Cleared all nearby waypoints");
                     }
                 }
             }
 
             saveCurrentState();
-            Scan.renderDirty = true;
 
-            for (BlockPos center : recheckPositions) {
-                recheckLocalArea(world, center);
+            if (!recheckPositions.isEmpty() && isRechecking.compareAndSet(false, true)) {
+                recheckLocalArea(world, recheckPositions.get(0));
             }
         }
     }
@@ -428,43 +432,62 @@ public class AsyncObsidianScanner {
         }
 
         long runId = generation.get();
-        Set<BlockPos> flowsSnapshot = new HashSet<>(rememberedWaterFlows);
+        Set<BlockPos> localFlows = new HashSet<>();
+        BlockPos.MutableBlockPos flowPos = new BlockPos.MutableBlockPos();
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                flowPos.set(x, maxY, z);
+                if (rememberedWaterFlows.contains(flowPos)) {
+                    localFlows.add(flowPos.immutable());
+                }
+            }
+        }
 
         CompletableFuture.supplyAsync(() -> {
-            return ObsidianScanner.scanLocal(blockData, minX, minY, minZ, width, height, depth,
-                    flowsSnapshot, specialBlocks);
+            try {
+                return ObsidianScanner.scanLocal(blockData, minX, minY, minZ, width, height, depth,
+                        localFlows, specialBlocks);
+            } catch (Exception e) {
+                return null;
+            }
         }).thenAccept(output -> {
             Minecraft.getInstance().execute(() -> {
-                if (generation.get() != runId || Minecraft.getInstance().level != world) return;
+                try {
+                    if (output == null || generation.get() != runId || Minecraft.getInstance().level != world) return;
 
-                BlockPos currentPPos = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.blockPosition() : null;
-                int newFormationsCount = 0;
-                for (LavaMarker newMarker : output.waypoints) {
-                    if (newMarker.type == LavaMarker.Type.LAVA_WAYPOINT) {
-                        boolean alreadyCovered = false;
-                        for (LavaMarker existing : waypoints) {
-                            if (existing.pos.equals(newMarker.pos) || !Collections.disjoint(existing.trackedLavaBlocks, newMarker.trackedLavaBlocks)) {
-                                alreadyCovered = true;
-                                break;
+                    BlockPos currentPPos = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.blockPosition() : null;
+                    int newFormationsCount = 0;
+                    for (LavaMarker newMarker : output.waypoints) {
+                        if (newMarker.type == LavaMarker.Type.LAVA_WAYPOINT) {
+                            boolean alreadyCovered = false;
+                            for (LavaMarker existing : waypoints) {
+                                if (existing.pos.equals(newMarker.pos) || !Collections.disjoint(existing.trackedLavaBlocks, newMarker.trackedLavaBlocks)) {
+                                    alreadyCovered = true;
+                                    break;
+                                }
+                            }
+                            if (!alreadyCovered && !isLavaCleared(world, newMarker.pos, newMarker.trackedLavaBlocks, currentPPos)) {
+                                waypoints.add(newMarker);
+                                predictedObsidianBlocks.addAll(newMarker.predictedObsidianBlocks);
+                                newFormationsCount++;
                             }
                         }
-                        if (!alreadyCovered && !isLavaCleared(world, newMarker.pos, newMarker.trackedLavaBlocks, currentPPos)) {
-                            waypoints.add(newMarker);
-                            predictedObsidianBlocks.addAll(newMarker.predictedObsidianBlocks);
-                            newFormationsCount++;
-                        }
                     }
-                }
-                rememberedWaterFlows.addAll(output.waterFlowPoints);
-                saveCurrentState();
+                    rememberedWaterFlows.addAll(output.waterFlowPoints);
+                    saveCurrentState();
 
-                if (newFormationsCount > 0) {
-                    Scan.renderDirty = true;
-                    reportActionBar("[Lavobsidian] Recheck found " + newFormationsCount + " new obsidian formation(s)!");
-                } else {
-                    reportActionBar("[Lavobsidian] Area clear (no new obsidian formed)");
+                    if (newFormationsCount > 0) {
+                        reportActionBar("[Lavobsidian] Recheck found " + newFormationsCount + " new obsidian formation(s)!");
+                    } else {
+                        reportActionBar("[Lavobsidian] Area clear (no new obsidian formed)");
+                    }
+                } finally {
+                    isRechecking.set(false);
                 }
             });
+        }).exceptionally(ex -> {
+            isRechecking.set(false);
+            return null;
         });
     }
 
@@ -486,7 +509,7 @@ public class AsyncObsidianScanner {
         Quaternionf orientation = context.levelState().cameraRenderState.orientation;
         Vec3 lookDirection = RenderUtil.getLookDirection(orientation);
 
-        // 1. Render predicted obsidian blocks ONLY when close (<= 48 blocks) to prevent quad sorting lag
+        // 1. Render predicted obsidian blocks ONLY when close (<= 20 blocks) to prevent quad sorting lag
         Color4f obsidianColor = LavaMarker.Type.PREDICTED_OBSIDIAN.defaultColor;
         for (BlockPos pos : predictedObsidianBlocks) {
             double relX = pos.getX() + 0.5 - camera.x;
@@ -494,8 +517,8 @@ public class AsyncObsidianScanner {
             double relZ = pos.getZ() + 0.5 - camera.z;
             double distSq = relX * relX + relZ * relZ;
 
-            // Distance culling for detailed obsidian prediction blocks
-            if (distSq > 48 * 48) continue;
+            // Distance culling for detailed obsidian prediction blocks (20 blocks)
+            if (distSq > 20 * 20) continue;
 
             double dist = Math.sqrt(distSq + relY * relY);
             if (dist > 0.1) {
