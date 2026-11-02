@@ -264,18 +264,51 @@ public class AsyncObsidianScanner {
         }
 
         if (!toRemove.isEmpty()) {
+            List<BlockPos> recheckPositions = new ArrayList<>();
+
             for (LavaMarker marker : toRemove) {
                 waypoints.remove(marker);
                 predictedObsidianBlocks.removeAll(marker.predictedObsidianBlocks);
-                if (marker.type == LavaMarker.Type.LAVA_WAYPOINT) {
-                    recheckLocalArea(world, marker.pos);
+
+                int remainingNearby = countNearbyWaypoints(marker.pos, 16.0, 10.0);
+                if (remainingNearby > 0) {
+                    reportActionBar("[Lavobsidian] Cleared waypoint (" + remainingNearby + " nearby remaining)");
                 } else {
-                    reportActionBar("[Lavobsidian] Cleared marker at " + marker.pos.toShortString());
+                    // All nearby waypoints in this area have been removed!
+                    boolean alreadyCovered = false;
+                    for (BlockPos center : recheckPositions) {
+                        if (center.closerThan(marker.pos, 14.0)) {
+                            alreadyCovered = true;
+                            break;
+                        }
+                    }
+                    if (!alreadyCovered) {
+                        recheckPositions.add(marker.pos);
+                    }
                 }
             }
+
             saveCurrentState();
             Scan.renderDirty = true;
+
+            for (BlockPos center : recheckPositions) {
+                recheckLocalArea(world, center);
+            }
         }
+    }
+
+    private static int countNearbyWaypoints(BlockPos pos, double radiusXZ, double radiusY) {
+        double radiusSq = radiusXZ * radiusXZ;
+        int count = 0;
+        for (LavaMarker m : waypoints) {
+            double dx = m.pos.getX() - pos.getX();
+            double dz = m.pos.getZ() - pos.getZ();
+            double dy = Math.abs(m.pos.getY() - pos.getY());
+            if (dx * dx + dz * dz <= radiusSq && dy <= radiusY) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static boolean isLavaCleared(Level world, BlockPos waypointPos, Set<BlockPos> trackedLava, BlockPos playerPos) {
@@ -330,8 +363,8 @@ public class AsyncObsidianScanner {
     }
 
     private static void recheckLocalArea(Level world, BlockPos center) {
-        int radiusXZ = 10;
-        int radiusY = 8;
+        int radiusXZ = 14;
+        int radiusY = 9;
         int minX = center.getX() - radiusXZ;
         int maxX = center.getX() + radiusXZ;
         int minY = Math.max(world.getMinY(), center.getY() - radiusY);
@@ -347,11 +380,13 @@ public class AsyncObsidianScanner {
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
                 if (world.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false) == null) {
-                    reportActionBar("[Lavobsidian] Cleared waypoint (all lava resolved)");
+                    reportActionBar("[Lavobsidian] Cleared all nearby waypoints");
                     return;
                 }
             }
         }
+
+        reportActionBar("[Lavobsidian] Cleared all nearby waypoints. Rechecking area...");
 
         int width = maxX - minX + 1;
         int height = maxY - minY + 1;
@@ -407,9 +442,9 @@ public class AsyncObsidianScanner {
 
                 if (newFormationsCount > 0) {
                     Scan.renderDirty = true;
-                    reportActionBar("[Lavobsidian] Cleared waypoint. Found " + newFormationsCount + " new obsidian formation(s)!");
+                    reportActionBar("[Lavobsidian] Recheck found " + newFormationsCount + " new obsidian formation(s)!");
                 } else {
-                    reportActionBar("[Lavobsidian] Cleared waypoint (all lava resolved)");
+                    reportActionBar("[Lavobsidian] Area clear (no new obsidian formed)");
                 }
             });
         });
