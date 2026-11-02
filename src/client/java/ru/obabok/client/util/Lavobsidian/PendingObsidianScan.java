@@ -7,10 +7,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.AABB;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class PendingObsidianScan {
     final Level world;
@@ -93,7 +91,11 @@ final class PendingObsidianScan {
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     pos.set(x, y, z);
-                    region.blocks[region.index(x, y, z)] = ObsidianScanner.classify(world.getBlockState(pos));
+                    BlockState state = world.getBlockState(pos);
+                    region.blocks[region.index(x, y, z)] = ObsidianScanner.classify(state);
+                    if (ObsidianScanner.isBlastResistantState(state)) {
+                        region.specialBlocks.put(pos.immutable(), ObsidianScanner.getBlastResistantType(state));
+                    }
                 }
             }
         }
@@ -122,6 +124,7 @@ final class PendingObsidianScan {
         final byte[] blocks;
         final Set<Long> requiredChunks = new HashSet<>();
         final Set<Long> capturedChunks = new HashSet<>();
+        final Map<BlockPos, LavaMarker.Type> specialBlocks = new ConcurrentHashMap<>();
 
         private RegionSnapshot(AABB range) {
             minX = (int) Math.floor(range.minX);

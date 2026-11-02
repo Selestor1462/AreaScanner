@@ -220,6 +220,13 @@ public class ScanTaskScreen extends ScreenPlus {
         lavaScanButton.active = !Scan.isProcessing();
         addRenderableWidget(lavaScanButton);
 
+        Button clearLavaBtn = Button.builder(Component.literal("Clear lava"), btn -> {
+            AsyncObsidianScanner.stopAndClear();
+            minecraft.setScreenAndShow(new ScanTaskScreen(parent, Scan.getArea()));
+        }).bounds(180, height - 55, 80, 20).build();
+        clearLavaBtn.active = AsyncObsidianScanner.canStopOrClear();
+        addRenderableWidget(clearLavaBtn);
+
         //back button
         addRenderableWidget(Button.builder(Component.literal("Back"), btn -> minecraft.setScreenAndShow(parent)).bounds( 30, height - 30, 50, 20).build());
 

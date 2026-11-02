@@ -28,6 +28,7 @@ import ru.obabok.client.Scan;
 import ru.obabok.client.gui.screens.ScanTaskScreen;
 import ru.obabok.client.models.BlockGroup;
 import ru.obabok.client.util.ConnectedBlockFinder;
+import ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner;
 import ru.obabok.common.model.BlockArea;
 import ru.obabok.common.References;
 
@@ -79,7 +80,10 @@ public class RenderUtil {
         }
 
 
-        if(!renderChunksList.isEmpty() || !renderBlocksList.isEmpty()){
+        boolean hasNormalRender = !renderChunksList.isEmpty() || !renderBlocksList.isEmpty();
+        boolean hasLavaRender = AsyncObsidianScanner.hasRenderableMarkers();
+
+        if(hasNormalRender || hasLavaRender){
             try {
 
                 context.poseStack().pushPose();
@@ -89,6 +93,7 @@ public class RenderUtil {
                 prepareRenderChunks(context);
 
                 prepareRenderBlocksOptimized(context);
+                AsyncObsidianScanner.render(context);
                 context.poseStack().popPose();
                 renderAll(Minecraft.getInstance(), BLOCKS_RENDER, context.poseStack());
             }catch (Exception ignored){
@@ -334,7 +339,7 @@ public class RenderUtil {
 
     }
 
-    private static void newRenderFilledBox(Matrix4fc positionMatrix, double x1, double y1, double z1, double x2, double y2, double z2, Vec3 camera, Color4f color) {
+    public static void newRenderFilledBox(Matrix4fc positionMatrix, double x1, double y1, double z1, double x2, double y2, double z2, Vec3 camera, Color4f color) {
 
         //up
         buffer.addVertex(positionMatrix, (float)(x1 - camera.x), (float)(y2 - camera.y), (float)(z2 - camera.z)).setColor(color.r, color.g, color.b, color.a);

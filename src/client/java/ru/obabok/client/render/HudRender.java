@@ -133,6 +133,16 @@ public class HudRender {
                             .formatted(lavobsidianChunks.size(), iterator.next())));
                 }
             }
+            int lavaMarkersCount = AsyncObsidianScanner.getMarkerCount();
+            if (lavaMarkersCount > 0) {
+                var player = Minecraft.getInstance().player;
+                BlockPos nearest = AsyncObsidianScanner.getNearestMarker(player != null ? player.blockPosition() : null);
+                if (nearest != null) {
+                    lines.add(Component.literal("Lava markers: %d -> [%d, %d, %d]".formatted(lavaMarkersCount, nearest.getX(), nearest.getY(), nearest.getZ())));
+                } else {
+                    lines.add(Component.literal("Lava markers: %d".formatted(lavaMarkersCount)));
+                }
+            }
             if (Config.Hud.HUD_RENDER_TIME.getBooleanValue()){
                 long now = System.currentTimeMillis();
                 if (now - lastUpdateTime >= 1000) {

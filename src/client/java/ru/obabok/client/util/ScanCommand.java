@@ -86,6 +86,9 @@ public class ScanCommand {
                 .then(ClientCommands.literal("stop").executes(context -> {
                     if (Scan.isRemoteProcessing()) ClientNetwork.stopScan();
                     Scan.stopScan();
+                    if (ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()) {
+                        ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.stopAndClear();
+                    }
                     context.getSource().sendFeedback(Component.literal("Scan stopped"));
                     return 1;
                 }))
@@ -196,6 +199,9 @@ public class ScanCommand {
         int count = area.getBoxes().size();
         area.clearAll();
         Scan.stopScan();
+        if (ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()) {
+            ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.stopAndClear();
+        }
         ctx.getSource().sendFeedback(Component.literal("Cleared " + count + " region(s)").withColor(TextColor.GRAY));
         return 1;
     }
