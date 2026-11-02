@@ -216,7 +216,7 @@ public class AsyncObsidianScanner {
                     rememberedWaterFlows.addAll(scannedFlows);
                     markerDimension = request.world.dimension().identifier().toString();
                     saveCurrentState();
-                    report("[Lavobsidian] Scan complete. Found " + waypoints.size() + " waypoints (" + predictedObsidianBlocks.size() + " predicted obsidian blocks)");
+                    report("[Lavobsidian] Scan complete. Found " + waypoints.size() + " blocks to remove");
                 } finally {
                     if (generation.get() == runId) {
                         unloadedChunks.clear();
@@ -493,7 +493,7 @@ public class AsyncObsidianScanner {
 
     public static boolean hasRenderableMarkers() {
         ensureInitialized();
-        return !waypoints.isEmpty() || !predictedObsidianBlocks.isEmpty();
+        return !waypoints.isEmpty();
     }
 
     public static void render(LevelRenderContext context) {
@@ -509,30 +509,7 @@ public class AsyncObsidianScanner {
         Quaternionf orientation = context.levelState().cameraRenderState.orientation;
         Vec3 lookDirection = RenderUtil.getLookDirection(orientation);
 
-        // 1. Render predicted obsidian blocks ONLY when close (<= 20 blocks) to prevent quad sorting lag
-        Color4f obsidianColor = LavaMarker.Type.PREDICTED_OBSIDIAN.defaultColor;
-        for (BlockPos pos : predictedObsidianBlocks) {
-            double relX = pos.getX() + 0.5 - camera.x;
-            double relY = pos.getY() + 0.5 - camera.y;
-            double relZ = pos.getZ() + 0.5 - camera.z;
-            double distSq = relX * relX + relZ * relZ;
-
-            // Distance culling for detailed obsidian prediction blocks (20 blocks)
-            if (distSq > 20 * 20) continue;
-
-            double dist = Math.sqrt(distSq + relY * relY);
-            if (dist > 0.1) {
-                double dot = (relX * lookDirection.x + relY * lookDirection.y + relZ * lookDirection.z) / dist;
-                if (dot < -0.2) continue; // Frustum culling
-            }
-
-            RenderUtil.newRenderFilledBox(matrices.last().pose(),
-                    pos.getX(), pos.getY(), pos.getZ(),
-                    pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1,
-                    camera, obsidianColor);
-        }
-
-        // 2. Render waypoints (main markers) with distance & frustum culling
+        // Render markers for blocks to remove that cause generation or obstruct
         for (LavaMarker marker : waypoints) {
             BlockPos pos = marker.pos;
             double relX = pos.getX() + 0.5 - camera.x;
