@@ -509,27 +509,9 @@ public class AsyncObsidianScanner {
         Quaternionf orientation = context.levelState().cameraRenderState.orientation;
         Vec3 lookDirection = RenderUtil.getLookDirection(orientation);
 
-        // Render markers for blocks to remove that cause generation or obstruct
+        // Render markers for blocks to remove that cause generation or obstruct with full LOD support
         for (LavaMarker marker : waypoints) {
-            BlockPos pos = marker.pos;
-            double relX = pos.getX() + 0.5 - camera.x;
-            double relY = pos.getY() + 0.5 - camera.y;
-            double relZ = pos.getZ() + 0.5 - camera.z;
-            double distSq = relX * relX + relZ * relZ;
-
-            // Distance culling (160 blocks)
-            if (distSq > 160 * 160) continue;
-
-            double dist = Math.sqrt(distSq + relY * relY);
-            if (dist > 0.1) {
-                double dot = (relX * lookDirection.x + relY * lookDirection.y + relZ * lookDirection.z) / dist;
-                if (dot < -0.2) continue; // Frustum culling
-            }
-
-            RenderUtil.newRenderFilledBox(matrices.last().pose(),
-                    pos.getX(), pos.getY(), pos.getZ(),
-                    pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1,
-                    camera, marker.color);
+            RenderUtil.renderBlockWithLOD(matrices.last().pose(), marker.pos, camera, lookDirection, marker.color);
         }
     }
 

@@ -178,32 +178,40 @@ public class RenderUtil {
             }
         }else{
             for (BlockPos pos : renderBlocksList) {
-                double relX = pos.getX() + 0.5 - camera.x;
-                double relY = pos.getY() + 0.5 - camera.y;
-                double relZ = pos.getZ() + 0.5 - camera.z;
-
-                double distXZ = Math.sqrt(relX * relX + relZ * relZ);
-                double distance = Math.sqrt(relX * relX + relY * relY + relZ * relZ);
-
-                if (checkDistance && distXZ > maxDistance) {
-                    continue;
-                }
-                double dot = (relX * lookDirection.x + relY * lookDirection.y + relZ * lookDirection.z) / distance;
-                if (dot < -0.2) {
-                    continue;
-                }
-
-                //LOD
-                if (distXZ < (double) Config.Generic.LOD1.getIntegerValue()) {
-                    newRenderFilledBox(matrices.last().pose(), pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1, camera, color);
-                } else if (distXZ < Config.Generic.LOD2.getIntegerValue()) {
-                    addMediumDetailCube(matrices.last().pose(), pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1, camera, color);
-                } else if (distXZ < Config.Generic.LOD2_HORIZON.getIntegerValue()) {
-                    addBillboardLOD(matrices.last().pose(), pos.getX(), pos.getY(), pos.getZ(), camera, color, 1, 1);
-                } else if (!Config.Generic.LOD2_HUD.getBooleanValue() && (maxDistance < 0 || distXZ < maxDistance)) {
-                    addBillboardLOD(matrices.last().pose(), pos.getX(), camera.y, pos.getZ(), camera, color, 2, 5);
-                }
+                renderBlockWithLOD(matrices.last().pose(), pos, camera, lookDirection, color);
             }
+        }
+    }
+
+    public static void renderBlockWithLOD(Matrix4fc matrix, BlockPos pos, Vec3 camera, Vec3 lookDirection, Color4f color) {
+        double relX = pos.getX() + 0.5 - camera.x;
+        double relY = pos.getY() + 0.5 - camera.y;
+        double relZ = pos.getZ() + 0.5 - camera.z;
+
+        double distXZ = Math.sqrt(relX * relX + relZ * relZ);
+        double distance = Math.sqrt(relX * relX + relY * relY + relZ * relZ);
+
+        int maxDistance = Config.Generic.SELECTED_BLOCKS_MAX_DISTANCE.getIntegerValue();
+        boolean checkDistance = maxDistance != -1;
+        if (checkDistance && distXZ > maxDistance) {
+            return;
+        }
+        if (distance > 0.1) {
+            double dot = (relX * lookDirection.x + relY * lookDirection.y + relZ * lookDirection.z) / distance;
+            if (dot < -0.2) {
+                return;
+            }
+        }
+
+        //LOD
+        if (distXZ < (double) Config.Generic.LOD1.getIntegerValue()) {
+            newRenderFilledBox(matrix, pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1, camera, color);
+        } else if (distXZ < Config.Generic.LOD2.getIntegerValue()) {
+            addMediumDetailCube(matrix, pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1, camera, color);
+        } else if (distXZ < Config.Generic.LOD2_HORIZON.getIntegerValue()) {
+            addBillboardLOD(matrix, pos.getX(), pos.getY(), pos.getZ(), camera, color, 1, 1);
+        } else if (!Config.Generic.LOD2_HUD.getBooleanValue() && (maxDistance < 0 || distXZ < maxDistance)) {
+            addBillboardLOD(matrix, pos.getX(), camera.y, pos.getZ(), camera, color, 2, 5);
         }
     }
 
