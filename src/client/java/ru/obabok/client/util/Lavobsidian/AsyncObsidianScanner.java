@@ -252,7 +252,7 @@ public class AsyncObsidianScanner {
         List<LavaMarker> toRemove = new ArrayList<>();
         for (LavaMarker marker : waypoints) {
             if (marker.type == LavaMarker.Type.LAVA_WAYPOINT) {
-                if (isLavaCleared(world, marker.pos, marker.trackedLavaBlocks, playerPos)) {
+                if (isLavaCleared(world, marker, playerPos)) {
                     toRemove.add(marker);
                 }
             } else {
@@ -315,24 +315,24 @@ public class AsyncObsidianScanner {
         return count;
     }
 
-    private static boolean isLavaCleared(Level world, BlockPos waypointPos, Set<BlockPos> trackedLava, BlockPos playerPos) {
-        if (trackedLava.isEmpty() || playerPos == null) return false;
+    private static boolean isLavaCleared(Level world, LavaMarker marker, BlockPos playerPos) {
+        if (marker.trackedLavaBlocks.isEmpty() || playerPos == null) return true;
 
         // The player must be within reasonable interaction proximity of this waypoint!
         // If the player is far away, they cannot have cleared this lava formation.
-        long dx = (long) waypointPos.getX() - playerPos.getX();
-        long dy = (long) waypointPos.getY() - playerPos.getY();
-        long dz = (long) waypointPos.getZ() - playerPos.getZ();
+        long dx = (long) marker.pos.getX() - playerPos.getX();
+        long dy = (long) marker.pos.getY() - playerPos.getY();
+        long dz = (long) marker.pos.getZ() - playerPos.getZ();
         if (dx * dx + dy * dy + dz * dz > 20 * 20) {
             return false;
         }
 
-        boolean checkedAny = false;
         int lastCx = Integer.MIN_VALUE;
         int lastCz = Integer.MIN_VALUE;
         net.minecraft.world.level.chunk.ChunkAccess chunk = null;
 
-        for (BlockPos pos : trackedLava) {
+        List<BlockPos> clearedBlocks = new ArrayList<>();
+        for (BlockPos pos : marker.trackedLavaBlocks) {
             int cx = pos.getX() >> 4;
             int cz = pos.getZ() >> 4;
             if (cx != lastCx || cz != lastCz) {
@@ -345,12 +345,25 @@ public class AsyncObsidianScanner {
             }
 
             FluidState fluid = chunk.getFluidState(pos);
-            if (fluid.is(Fluids.LAVA)) {
-                return false; // Still contains lava!
+            if (!fluid.is(Fluids.LAVA)) {
+                clearedBlocks.add(pos);
             }
-            checkedAny = true;
         }
-        return checkedAny;
+
+        if (!clearedBlocks.isEmpty()) {
+            marker.trackedLavaBlocks.removeAll(clearedBlocks);
+        }
+
+        if (marker.trackedLavaBlocks.isEmpty()) {
+            return true; // All lava blocks in this formation are cleared!
+        }
+
+        // If the main waypoint block was cleared, update marker.pos to one of the remaining lava blocks!
+        if (!marker.trackedLavaBlocks.contains(marker.pos)) {
+            marker.pos = marker.trackedLavaBlocks.iterator().next();
+        }
+
+        return false;
     }
 
     private static boolean isBlastResistantCleared(Level world, BlockPos pos, BlockPos playerPos) {
@@ -466,7 +479,7 @@ public class AsyncObsidianScanner {
                                     break;
                                 }
                             }
-                            if (!alreadyCovered && !isLavaCleared(world, newMarker.pos, newMarker.trackedLavaBlocks, currentPPos)) {
+                            if (!alreadyCovered && !isLavaCleared(world, newMarker, currentPPos)) {
                                 waypoints.add(newMarker);
                                 predictedObsidianBlocks.addAll(newMarker.predictedObsidianBlocks);
                                 newFormationsCount++;
@@ -511,7 +524,18 @@ public class AsyncObsidianScanner {
 
         // Render markers for blocks to remove that cause generation or obstruct with full LOD support
         for (LavaMarker marker : waypoints) {
-            RenderUtil.renderBlockWithLOD(matrices.last().pose(), marker.pos, camera, lookDirection, marker.color);
+            double relX = marker.pos.getX() + 0.5 - camera.x;
+            double relZ = marker.pos.getZ() + 0.5 - camera.z;
+            double distXZ = Math.sqrt(relX * relX + relZ * relZ);
+
+            if (marker.type == LavaMarker.Type.LAVA_WAYPOINT && marker.trackedLavaBlocks.size() > 1 && distXZ <= 32.0) {
+                // When nearby, highlight all remaining lava blocks that belong to this formation
+                for (BlockPos lavaPos : marker.trackedLavaBlocks) {
+                    RenderUtil.renderBlockWithLOD(matrices.last().pose(), lavaPos, camera, lookDirection, marker.color);
+                }
+            } else {
+                RenderUtil.renderBlockWithLOD(matrices.last().pose(), marker.pos, camera, lookDirection, marker.color);
+            }
         }
     }
 

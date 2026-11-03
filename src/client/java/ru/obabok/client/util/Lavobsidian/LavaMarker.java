@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LavaMarker {
     public enum Type {
@@ -24,7 +25,7 @@ public class LavaMarker {
         }
     }
 
-    public final BlockPos pos;
+    public volatile BlockPos pos;
     public final Type type;
     public final Color4f color;
     public final Set<BlockPos> trackedLavaBlocks;
@@ -34,7 +35,10 @@ public class LavaMarker {
         this.pos = pos;
         this.type = type;
         this.color = color != null ? color : type.defaultColor;
-        this.trackedLavaBlocks = trackedLavaBlocks != null ? Collections.unmodifiableSet(new HashSet<>(trackedLavaBlocks)) : Collections.emptySet();
+        this.trackedLavaBlocks = ConcurrentHashMap.newKeySet();
+        if (trackedLavaBlocks != null) {
+            this.trackedLavaBlocks.addAll(trackedLavaBlocks);
+        }
         this.predictedObsidianBlocks = predictedObsidianBlocks != null ? Collections.unmodifiableSet(new HashSet<>(predictedObsidianBlocks)) : Collections.emptySet();
     }
 
