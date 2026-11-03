@@ -531,10 +531,10 @@ public class AsyncObsidianScanner {
             if (marker.type == LavaMarker.Type.LAVA_WAYPOINT && marker.trackedLavaBlocks.size() > 1 && distXZ <= 32.0) {
                 // When nearby, highlight all remaining lava blocks that belong to this formation
                 for (BlockPos lavaPos : marker.trackedLavaBlocks) {
-                    RenderUtil.renderBlockWithLOD(matrices.last().pose(), lavaPos, camera, lookDirection, marker.color);
+                    RenderUtil.renderWaypointWithLOD(matrices.last().pose(), lavaPos, camera, lookDirection, marker.color);
                 }
             } else {
-                RenderUtil.renderBlockWithLOD(matrices.last().pose(), marker.pos, camera, lookDirection, marker.color);
+                RenderUtil.renderWaypointWithLOD(matrices.last().pose(), marker.pos, camera, lookDirection, marker.color);
             }
         }
     }
@@ -557,6 +557,11 @@ public class AsyncObsidianScanner {
 
     public static Set<ChunkPos> getUnloadedChunks() {
         return new HashSet<>(unloadedChunks);
+    }
+
+    public static List<LavaMarker> getMarkers() {
+        ensureInitialized();
+        return waypoints;
     }
 
     public static int getMarkerCount() {

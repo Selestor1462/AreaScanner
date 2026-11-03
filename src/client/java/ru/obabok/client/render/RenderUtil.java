@@ -209,9 +209,47 @@ public class RenderUtil {
         } else if (distXZ < Config.Generic.LOD2.getIntegerValue()) {
             addMediumDetailCube(matrix, pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1, camera, color);
         } else if (distXZ < Config.Generic.LOD2_HORIZON.getIntegerValue()) {
-            addBillboardLOD(matrix, pos.getX(), pos.getY(), pos.getZ(), camera, color, 1, 1);
+            addBillboardLOD(matrix, pos.getX(), pos.getY(), pos.getZ(), camera, color, 1.5f, 1.5f);
         } else if (!Config.Generic.LOD2_HUD.getBooleanValue() && (maxDistance < 0 || distXZ < maxDistance)) {
             addBillboardLOD(matrix, pos.getX(), camera.y, pos.getZ(), camera, color, 2, 5);
+        }
+    }
+
+    public static void renderWaypointWithLOD(Matrix4fc matrix, BlockPos pos, Vec3 camera, Vec3 lookDirection, Color4f color) {
+        double relX = pos.getX() + 0.5 - camera.x;
+        double relY = pos.getY() + 0.5 - camera.y;
+        double relZ = pos.getZ() + 0.5 - camera.z;
+
+        double distXZ = Math.sqrt(relX * relX + relZ * relZ);
+        double distance = Math.sqrt(relX * relX + relY * relY + relZ * relZ);
+
+        // Frustum check: don't cull if in front horizontally or in front 3D
+        if (distance > 0.1) {
+            double dot3D = (relX * lookDirection.x + relY * lookDirection.y + relZ * lookDirection.z) / distance;
+            double dotHoriz = (relX * lookDirection.x + relZ * lookDirection.z) / Math.max(0.001, distXZ);
+            if (dot3D < -0.35 && dotHoriz < -0.35) {
+                return;
+            }
+        }
+
+        int lod1 = Config.Generic.LOD1.getIntegerValue();
+        int lod2 = Config.Generic.LOD2.getIntegerValue();
+        int lodHorizon = Config.Generic.LOD2_HORIZON.getIntegerValue();
+
+        if (distXZ < lod1) {
+            // Close: full 3D filled box
+            newRenderFilledBox(matrix, pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1, camera, color);
+        } else if (distXZ < lod2) {
+            // Medium: 3D filled box
+            newRenderFilledBox(matrix, pos.getX(), pos.getY(), pos.getZ(), pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1, camera, color);
+        } else if (distXZ < lodHorizon) {
+            // Horizon: billboard at actual block + horizon beacon
+            addBillboardLOD(matrix, pos.getX(), pos.getY(), pos.getZ(), camera, color, 2.0f, 2.0f);
+            addBillboardLOD(matrix, pos.getX(), camera.y, pos.getZ(), camera, color, 1.5f, 4.0f);
+        } else {
+            // Distant (> lodHorizon): prominent beacon pillar on horizon + billboard at block
+            addBillboardLOD(matrix, pos.getX(), camera.y, pos.getZ(), camera, color, 2.5f, 8.0f);
+            addBillboardLOD(matrix, pos.getX(), pos.getY(), pos.getZ(), camera, color, 3.0f, 3.0f);
         }
     }
 
@@ -222,22 +260,7 @@ public class RenderUtil {
     }
 
     private static void addMediumDetailCube(Matrix4fc matrix, double x1, double y1, double z1, double x2, double y2, double z2, Vec3 camera, Color4f color) {
-        float rx1 = (float)(x1 - camera.x);
-        float ry1 = (float)(y1 - camera.y);
-        float rz1 = (float)(z1 - camera.z);
-        float rx2 = (float)(x2 - camera.x);
-        float ry2 = (float)(y2 - camera.y);
-        float rz2 = (float)(z2 - camera.z);
-
-        buffer.addVertex(matrix, rx1, ry1, rz1).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(matrix, rx2, ry1, rz2).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(matrix, rx2, ry2, rz2).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(matrix, rx1, ry2, rz1).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(matrix, rx2, ry1, rz1).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(matrix, rx1, ry1, rz2).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(matrix, rx1, ry2, rz2).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(matrix, rx2, ry2, rz1).setColor(color.r, color.g, color.b, color.a);
-
+        newRenderFilledBox(matrix, x1, y1, z1, x2, y2, z2, camera, color);
     }
 
     public static void buildGroupMesh(Matrix4fc positionMatrix, BlockGroup group, Vec3 camera, Color4f color) {
@@ -304,32 +327,38 @@ public class RenderUtil {
     }
 
 
-    private static void addBillboardLOD(Matrix4fc viewMatrix, double blockX, double blockY, double blockZ, Vec3 camera, Color4f color, float width, float height) {
+    public static void addBillboardLOD(Matrix4fc viewMatrix, double blockX, double blockY, double blockZ, Vec3 camera, Color4f color, float width, float height) {
         float cx = (float)(blockX + 0.5 - camera.x);
         float cy = (float)(blockY + 0.5 - camera.y);
         float cz = (float)(blockZ + 0.5 - camera.z);
 
-        double lenSq = cx*cx + cy*cy + cz*cz;
-        if (lenSq == 0) return;
+        double lenSq = cx * cx + cy * cy + cz * cz;
+        if (lenSq < 1e-6) return;
 
         double invLen = 1.0 / Math.sqrt(lenSq);
         double nx = cx * invLen;
         double ny = cy * invLen;
         double nz = cz * invLen;
 
-        double rightX = nz;
+        // In Minecraft: +X is East, +Y is Up, +Z is South.
+        // Forward from camera to block is (nx, ny, nz).
+        // Horizontal right vector: forward x (0, 1, 0) = (-nz, 0, nx)
+        double rightX = -nz;
         double rightY = 0;
-        double rightZ = -nx;
+        double rightZ = nx;
 
-        double rLenSq = rightX*rightX + rightZ*rightZ;
+        double rLenSq = rightX * rightX + rightZ * rightZ;
         if (rLenSq < 1e-6) {
-            rightX = 1; rightY = 0; rightZ = 0;
+            rightX = 1;
+            rightY = 0;
+            rightZ = 0;
         } else {
             double invRLen = 1.0 / Math.sqrt(rLenSq);
             rightX *= invRLen;
             rightZ *= invRLen;
         }
 
+        // up = right x forward
         double upX = rightY * nz - rightZ * ny;
         double upY = rightZ * nx - rightX * nz;
         double upZ = rightX * ny - rightY * nx;
@@ -337,14 +366,31 @@ public class RenderUtil {
         float halfW = width * 0.5f;
         float halfH = height * 0.5f;
 
+        float rx = (float)(rightX * halfW);
+        float ry = (float)(rightY * halfW);
+        float rz = (float)(rightZ * halfW);
 
-        float rW = (float)(rightX * halfW);
-        float rH_up = (float)(upX * halfH);
-        buffer.addVertex(viewMatrix, cx - rW - rH_up, cy - (float)(rightY * halfW) - (float)(upY * halfH), cz - (float)(rightZ * halfW) - (float)(upZ * halfH)).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(viewMatrix, cx + rW - rH_up, cy + (float)(rightY * halfW) - (float)(upY * halfH), cz + (float)(rightZ * halfW) - (float)(upZ * halfH)).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(viewMatrix, cx + rW + rH_up, cy + (float)(rightY * halfW) + (float)(upY * halfH), cz + (float)(rightZ * halfW) + (float)(upZ * halfH)).setColor(color.r, color.g, color.b, color.a);
-        buffer.addVertex(viewMatrix, cx - rW + rH_up, cy - (float)(rightY * halfW) + (float)(upY * halfH), cz - (float)(rightZ * halfW) + (float)(upZ * halfH)).setColor(color.r, color.g, color.b, color.a);
+        float ux = (float)(upX * halfH);
+        float uy = (float)(upY * halfH);
+        float uz = (float)(upZ * halfH);
 
+        // Four corners of the quad:
+        float brX = cx + rx - ux, brY = cy + ry - uy, brZ = cz + rz - uz;
+        float blX = cx - rx - ux, blY = cy - ry - uy, blZ = cz - rz - uz;
+        float tlX = cx - rx + ux, tlY = cy - ry + uy, tlZ = cz - rz + uz;
+        float trX = cx + rx + ux, trY = cy + ry + uy, trZ = cz + rz + uz;
+
+        // Front Face (Clockwise: BR -> BL -> TL -> TR)
+        buffer.addVertex(viewMatrix, brX, brY, brZ).setColor(color.r, color.g, color.b, color.a);
+        buffer.addVertex(viewMatrix, blX, blY, blZ).setColor(color.r, color.g, color.b, color.a);
+        buffer.addVertex(viewMatrix, tlX, tlY, tlZ).setColor(color.r, color.g, color.b, color.a);
+        buffer.addVertex(viewMatrix, trX, trY, trZ).setColor(color.r, color.g, color.b, color.a);
+
+        // Back Face (Clockwise from back: TR -> TL -> BL -> BR)
+        buffer.addVertex(viewMatrix, trX, trY, trZ).setColor(color.r, color.g, color.b, color.a);
+        buffer.addVertex(viewMatrix, tlX, tlY, tlZ).setColor(color.r, color.g, color.b, color.a);
+        buffer.addVertex(viewMatrix, blX, blY, blZ).setColor(color.r, color.g, color.b, color.a);
+        buffer.addVertex(viewMatrix, brX, brY, brZ).setColor(color.r, color.g, color.b, color.a);
     }
 
     public static void newRenderFilledBox(Matrix4fc positionMatrix, double x1, double y1, double z1, double x2, double y2, double z2, Vec3 camera, Color4f color) {
