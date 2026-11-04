@@ -369,8 +369,8 @@ public class FastScanJob {
         if (!isInRange(pos)) return;
         if (!scanCompleted && !scannedChunks.contains(ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4))) return;
 
-        int minY = Math.max(world.getMinY(), pos.getY() - 20);
-        int maxY = Math.min(world.getMaxY() - 1, pos.getY() + 20);
+        int minY = world.getMinY();
+        int maxY = Math.min(world.getMaxY() - 1, pos.getY() + 6);
         for (int y = minY; y <= maxY; y++) {
             BlockPos affectedPos = new BlockPos(pos.getX(), y, pos.getZ());
             if (!isInRange(affectedPos)) continue;

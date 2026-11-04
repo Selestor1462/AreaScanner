@@ -112,11 +112,11 @@ public class WhitelistEditorScreen extends ScreenPlus {
         gravityColumnButton.visible = false;
         addRenderableWidget(gravityColumnButton);
 
-        gravityAboveButton = Button.builder(Component.literal("□ Gravity above (20)"), btn -> {
+        gravityAboveButton = Button.builder(Component.literal("□ Gravity above"), btn -> {
             createdWhitelistItem.gravityAbove = !createdWhitelistItem.gravityAbove;
             updateGravityButtons();
         }).bounds(130, y + 25, 130, 20).build();
-        gravityAboveButton.setTooltip(Tooltip.create(Component.literal("Match if air is directly above and a gravity block exists in 20 blocks above")));
+        gravityAboveButton.setTooltip(Tooltip.create(Component.literal("Match if air is directly above and a gravity block exists in the column above")));
         gravityAboveButton.visible = false;
         addRenderableWidget(gravityAboveButton);
 
@@ -167,7 +167,7 @@ public class WhitelistEditorScreen extends ScreenPlus {
 
             String builder = (item.block == null ? "-\n" : item.block + " AND\n") +
                     (item.gravityColumn ? "Gravity column: 7+ AND\n" : "-\n") +
-                    (item.gravityAbove ? "Gravity above: 20 AND\n" : "-\n") +
+                    (item.gravityAbove ? "Gravity above: column AND\n" : "-\n") +
                     (item.waterlogged == null ? "-\n" : "Waterlogged: " + item.waterlogged + " AND\n") +
                     (item.pistonBehavior == null ? "-\n" : "Piston behavior: " + item.pistonBehavior + " AND\n") +
                     (item.blastResistance == null ? "-" : "Blast resistance: " + item.blastResistance);
@@ -278,7 +278,7 @@ public class WhitelistEditorScreen extends ScreenPlus {
         if (!gravityAboveAvailable) {
             createdWhitelistItem.gravityAbove = false;
         }
-        gravityAboveButton.setMessage(Component.literal((createdWhitelistItem.gravityAbove ? "☑" : "□") + " Gravity above (20)"));
+        gravityAboveButton.setMessage(Component.literal((createdWhitelistItem.gravityAbove ? "☑" : "□") + " Gravity above"));
     }
 
     private boolean isGravityBlockInput() {

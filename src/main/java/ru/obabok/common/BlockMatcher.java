@@ -66,7 +66,7 @@ public class BlockMatcher {
                         if (block.equals("#redstone_gravity") || block.equals("#redstone_ore_gravity") || block.equals("#redstone_with_gravity")) {
                             boolean isRedstone = actual == Blocks.REDSTONE_ORE || actual == Blocks.DEEPSLATE_REDSTONE_ORE;
                             boolean matches = "=".equals(operator) ? isRedstone : !isRedstone;
-                            if (matches && hasGravityBlockAbove(pos, world, 20)) {
+                            if (matches && hasGravityBlockAbove(pos, world)) {
                                 isMatch = true;
                             }
                         } else if (block.startsWith("#")) {
@@ -108,7 +108,7 @@ public class BlockMatcher {
             if (whitelistItem.gravityColumn && !gravityColumnMatches) {
                 insideMeet = false;
             }
-            if (whitelistItem.gravityAbove && !hasGravityBlockAbove(pos, world, 20)) {
+            if (whitelistItem.gravityAbove && !hasGravityBlockAbove(pos, world)) {
                 insideMeet = false;
             }
             /*&& whitelistItem.block != blockState.getBlock()) {
@@ -218,7 +218,7 @@ public class BlockMatcher {
         return height >= 7;
     }
 
-    public static boolean hasGravityBlockAbove(BlockPos pos, Level world, int distance) {
+    public static boolean hasGravityBlockAbove(BlockPos pos, Level world) {
         if (world == null) return false;
 
         // Must have air directly above
@@ -227,7 +227,7 @@ public class BlockMatcher {
             return false;
         }
 
-        int maxY = Math.min(world.getMaxY() - 1, pos.getY() + distance);
+        int maxY = world.getMaxY() - 1;
         BlockPos.MutableBlockPos checkPos = new BlockPos.MutableBlockPos();
         for (int y = pos.getY() + 2; y <= maxY; y++) {
             checkPos.set(pos.getX(), y, pos.getZ());

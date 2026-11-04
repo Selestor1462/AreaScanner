@@ -51,7 +51,7 @@ public class WhitelistItem {
             builder.append(" and gravityColumn:7+");
         }
         if(gravityAbove){
-            builder.append(" and gravityAbove:20");
+            builder.append(" and gravityAbove");
         }
         builder.append("]");
         return builder.toString();
