@@ -12,6 +12,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.CommonColors;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
 import org.jspecify.annotations.NonNull;
@@ -39,16 +40,25 @@ public class WhitelistEditorScreen extends ScreenPlus {
     private final WhitelistItem createdWhitelistItem = new WhitelistItem(null, null, null, null);
     private Button addToWhitelistBtn;
     private Button gravityColumnButton;
+    private Button gravityAboveButton;
     private static final List<String> waterloggedValues = List.of("true", "false");
     public static final List<String> pistonBehaviorValues = Arrays.stream(Scan.PistonBehavior.values()).map(Enum::toString).toList();
-    private static final List<String> BLOCK_IDS = BuiltInRegistries.BLOCK.keySet()
-            .stream()
-            .map(Identifier::toString)
-            .sorted(Comparator.comparing(id -> {
-                int colon = id.indexOf(':');
-                return colon >= 0 ? id.substring(colon + 1) : id;
-            }))
-            .toList();
+    private static final List<String> BLOCK_IDS;
+    static {
+        List<String> list = new ArrayList<>();
+        list.add("#minecraft:redstone_ores");
+        list.add("#redstone_gravity");
+        list.addAll(BuiltInRegistries.BLOCK.keySet()
+                .stream()
+                .map(Identifier::toString)
+                .toList());
+        list.sort(Comparator.comparing(id -> {
+            String clean = id.startsWith("#") ? id.substring(1) : id;
+            int colon = clean.indexOf(':');
+            return colon >= 0 ? clean.substring(colon + 1) : clean;
+        }));
+        BLOCK_IDS = Collections.unmodifiableList(list);
+    }
     private SuggestionListWidget blockSuggestions;
 
     private ToggelableWidgedDropDownList<String> waterloggedWidget;
@@ -96,11 +106,19 @@ public class WhitelistEditorScreen extends ScreenPlus {
 
         gravityColumnButton = Button.builder(Component.literal("□ 7+ column"), btn -> {
             createdWhitelistItem.gravityColumn = !createdWhitelistItem.gravityColumn;
-            updateGravityColumnButton();
+            updateGravityButtons();
         }).bounds(130, y + 25, 130, 20).build();
         gravityColumnButton.setTooltip(Tooltip.create(Component.literal("Match columns of 7 or more consecutive blocks")));
         gravityColumnButton.visible = false;
         addRenderableWidget(gravityColumnButton);
+
+        gravityAboveButton = Button.builder(Component.literal("□ Gravity above (20)"), btn -> {
+            createdWhitelistItem.gravityAbove = !createdWhitelistItem.gravityAbove;
+            updateGravityButtons();
+        }).bounds(130, y + 25, 130, 20).build();
+        gravityAboveButton.setTooltip(Tooltip.create(Component.literal("Match if any gravity block exists in 20 blocks above")));
+        gravityAboveButton.visible = false;
+        addRenderableWidget(gravityAboveButton);
 
         int listWidth = 220;
 
@@ -149,6 +167,7 @@ public class WhitelistEditorScreen extends ScreenPlus {
 
             String builder = (item.block == null ? "-\n" : item.block + " AND\n") +
                     (item.gravityColumn ? "Gravity column: 7+ AND\n" : "-\n") +
+                    (item.gravityAbove ? "Gravity above: 20 AND\n" : "-\n") +
                     (item.waterlogged == null ? "-\n" : "Waterlogged: " + item.waterlogged + " AND\n") +
                     (item.pistonBehavior == null ? "-\n" : "Piston behavior: " + item.pistonBehavior + " AND\n") +
                     (item.blastResistance == null ? "-" : "Blast resistance: " + item.blastResistance);
@@ -224,25 +243,42 @@ public class WhitelistEditorScreen extends ScreenPlus {
             add(new WhitelistItem(null, null, ">9", "≠DESTROY"));
             Blocks.GLAZED_TERRACOTTA.forEach(block -> add(new WhitelistItem("=" + BuiltInRegistries.BLOCK.getKey(block), null, null, null)));
         }}, "Quarry");
+        Whitelist redstoneGravity = new Whitelist(new ArrayList<>(){{
+            WhitelistItem r1 = new WhitelistItem("=" + BuiltInRegistries.BLOCK.getKey(Blocks.REDSTONE_ORE), null, null, null);
+            r1.gravityAbove = true;
+            add(r1);
+            WhitelistItem r2 = new WhitelistItem("=" + BuiltInRegistries.BLOCK.getKey(Blocks.DEEPSLATE_REDSTONE_ORE), null, null, null);
+            r2.gravityAbove = true;
+            add(r2);
+        }}, "Redstone + Gravity");
 
         list.add(worldEater);
         list.add(fluidsAndWaterlogged);
         list.add(quarry);
+        list.add(redstoneGravity);
         return new ToggelableWidgedDropDownList<>(width - 180, 30, 150, 20, 100, 5, list);
     }
 
     private boolean validateCreatedWhitelistItem(){
-        return createdWhitelistItem.block != null || createdWhitelistItem.waterlogged != null || createdWhitelistItem.pistonBehavior != null || createdWhitelistItem.blastResistance != null || createdWhitelistItem.gravityColumn;
+        return createdWhitelistItem.block != null || createdWhitelistItem.waterlogged != null || createdWhitelistItem.pistonBehavior != null || createdWhitelistItem.blastResistance != null || createdWhitelistItem.gravityColumn || createdWhitelistItem.gravityAbove;
     }
 
-    private void updateGravityColumnButton() {
-        boolean available = isGravityBlockInput() && "=".equals(blockEqualsOperatorsWidget.getSelectedEntry());
-        gravityColumnButton.visible = available;
-        gravityColumnButton.active = available;
-        if (!available) {
+    private void updateGravityButtons() {
+        boolean gravityColAvailable = isGravityBlockInput() && "=".equals(blockEqualsOperatorsWidget.getSelectedEntry());
+        gravityColumnButton.visible = gravityColAvailable;
+        gravityColumnButton.active = gravityColAvailable;
+        if (!gravityColAvailable) {
             createdWhitelistItem.gravityColumn = false;
         }
         gravityColumnButton.setMessage(Component.literal((createdWhitelistItem.gravityColumn ? "☑" : "□") + " 7+ column"));
+
+        boolean gravityAboveAvailable = isGravityAboveApplicable() && "=".equals(blockEqualsOperatorsWidget.getSelectedEntry());
+        gravityAboveButton.visible = gravityAboveAvailable;
+        gravityAboveButton.active = gravityAboveAvailable;
+        if (!gravityAboveAvailable) {
+            createdWhitelistItem.gravityAbove = false;
+        }
+        gravityAboveButton.setMessage(Component.literal((createdWhitelistItem.gravityAbove ? "☑" : "□") + " Gravity above (20)"));
     }
 
     private boolean isGravityBlockInput() {
@@ -256,12 +292,53 @@ public class WhitelistEditorScreen extends ScreenPlus {
                 && BuiltInRegistries.BLOCK.getValue(id) instanceof FallingBlock;
     }
 
+    private boolean isGravityAboveApplicable() {
+        String normalized = normalize(blockInput.getValue());
+        if (normalized.isEmpty()) return false;
+        if (normalized.equals("redstone_ore") || normalized.equals("minecraft:redstone_ore")
+                || normalized.equals("deepslate_redstone_ore") || normalized.equals("minecraft:deepslate_redstone_ore")
+                || normalized.equals("#redstone_ores") || normalized.equals("#minecraft:redstone_ores")
+                || normalized.equals("#redstone_gravity") || normalized.equals("#redstone_ore_gravity")) {
+            return true;
+        }
+        Identifier id = tryParseId(normalized.startsWith("#") ? normalized.substring(1) : normalized);
+        if (id == null && !normalized.contains(":")) {
+            id = tryParseId("minecraft:" + (normalized.startsWith("#") ? normalized.substring(1) : normalized));
+        }
+        if (id != null) {
+            if (BuiltInRegistries.BLOCK.containsKey(id)) {
+                Block b = BuiltInRegistries.BLOCK.getValue(id);
+                if (b == Blocks.REDSTONE_ORE || b == Blocks.DEEPSLATE_REDSTONE_ORE) {
+                    return true;
+                }
+            }
+        }
+        return parseBlock(blockInput.getValue()) != null && !isGravityBlockInput();
+    }
+
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         try {
-            if(blockEqualsOperatorsWidget.getSelectedEntry() != null && !blockInput.getValue().isEmpty() && BuiltInRegistries.BLOCK.containsKey(Identifier.parse(blockInput.getValue()))){
-                createdWhitelistItem.block = blockEqualsOperatorsWidget.getSelectedEntry() + BuiltInRegistries.BLOCK.getKey(BuiltInRegistries.BLOCK.getValue(Identifier.parse(blockInput.getValue())));
+            if(blockEqualsOperatorsWidget.getSelectedEntry() != null && !blockInput.getValue().isEmpty()){
+                String parsed = parseBlock(blockInput.getValue());
+                if (parsed != null) {
+                    if (parsed.startsWith("#")) {
+                        createdWhitelistItem.block = blockEqualsOperatorsWidget.getSelectedEntry() + parsed;
+                    } else if (BuiltInRegistries.BLOCK.containsKey(Identifier.parse(blockInput.getValue()))) {
+                        createdWhitelistItem.block = blockEqualsOperatorsWidget.getSelectedEntry() + BuiltInRegistries.BLOCK.getKey(BuiltInRegistries.BLOCK.getValue(Identifier.parse(blockInput.getValue())));
+                    } else {
+                        Identifier id = tryParseId(normalize(blockInput.getValue()));
+                        if (id == null && !normalize(blockInput.getValue()).contains(":")) {
+                            id = tryParseId("minecraft:" + normalize(blockInput.getValue()));
+                        }
+                        if (id != null && BuiltInRegistries.BLOCK.containsKey(id)) {
+                            createdWhitelistItem.block = blockEqualsOperatorsWidget.getSelectedEntry() + id;
+                        } else {
+                            createdWhitelistItem.block = null;
+                        }
+                    }
+                } else createdWhitelistItem.block = null;
             }else createdWhitelistItem.block = null;
         }catch (Exception ignored){}
         //waterlogged
@@ -279,7 +356,7 @@ public class WhitelistEditorScreen extends ScreenPlus {
             createdWhitelistItem.blastResistance = blastResistanceComparisonOperatorsWidget.getSelectedEntry() + blastResistanceValue.getValue();
         }else createdWhitelistItem.blastResistance = null;
 
-        updateGravityColumnButton();
+        updateGravityButtons();
 
         //borders
         context.outline(20,20, 245, 265, CommonColors.LIGHT_GRAY);
@@ -382,7 +459,11 @@ public class WhitelistEditorScreen extends ScreenPlus {
 
 
         List<String> matches = BLOCK_IDS.stream()
-                .filter(id -> id.contains(query))
+                .filter(id -> {
+                    String clean = id.startsWith("#") ? id.substring(1) : id;
+                    String cleanQuery = query.startsWith("#") ? query.substring(1) : query;
+                    return id.contains(query) || clean.contains(cleanQuery);
+                })
                 .sorted(Comparator.comparingInt((String id) -> suggestionScore(id, query))
                         .thenComparing(WhitelistEditorScreen::pathOf))
                 .toList();
@@ -402,6 +483,21 @@ public class WhitelistEditorScreen extends ScreenPlus {
         String normalized = normalize(raw);
 
         if (normalized.isEmpty()) {
+            return null;
+        }
+
+        if (normalized.startsWith("#")) {
+            if (normalized.equals("#redstone_gravity") || normalized.equals("#redstone_ore_gravity") || normalized.equals("#redstone_with_gravity")) {
+                return normalized;
+            }
+            String tagPath = normalized.substring(1);
+            if (!tagPath.contains(":")) {
+                tagPath = "minecraft:" + tagPath;
+            }
+            Identifier tagId = tryParseId(tagPath);
+            if (tagId != null) {
+                return "#" + tagId;
+            }
             return null;
         }
 
@@ -428,22 +524,25 @@ public class WhitelistEditorScreen extends ScreenPlus {
     }
 
     private static String pathOf(String id) {
-        int colon = id.indexOf(':');
-        return colon >= 0 ? id.substring(colon + 1) : id;
+        String clean = id.startsWith("#") ? id.substring(1) : id;
+        int colon = clean.indexOf(':');
+        return colon >= 0 ? clean.substring(colon + 1) : clean;
     }
 
     private static int suggestionScore(String id, String query) {
-        String path = pathOf(id);
+        String clean = id.startsWith("#") ? id.substring(1) : id;
+        String cleanQuery = query.startsWith("#") ? query.substring(1) : query;
+        String path = pathOf(clean);
 
-        if (id.equals(query) || path.equals(query)) {
+        if (clean.equals(cleanQuery) || path.equals(cleanQuery)) {
             return 0;
         }
 
-        if (id.startsWith(query) || path.startsWith(query)) {
+        if (clean.startsWith(cleanQuery) || path.startsWith(cleanQuery)) {
             return 1;
         }
 
-        int idx = path.indexOf(query);
+        int idx = path.indexOf(cleanQuery);
         if (idx > 0 && path.charAt(idx - 1) == '_') {
             return 2;
         }
