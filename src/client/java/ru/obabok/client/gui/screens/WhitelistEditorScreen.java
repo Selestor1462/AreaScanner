@@ -116,7 +116,7 @@ public class WhitelistEditorScreen extends ScreenPlus {
             createdWhitelistItem.gravityAbove = !createdWhitelistItem.gravityAbove;
             updateGravityButtons();
         }).bounds(130, y + 25, 130, 20).build();
-        gravityAboveButton.setTooltip(Tooltip.create(Component.literal("Match if any gravity block exists in 20 blocks above")));
+        gravityAboveButton.setTooltip(Tooltip.create(Component.literal("Match if air is directly above and a gravity block exists in 20 blocks above")));
         gravityAboveButton.visible = false;
         addRenderableWidget(gravityAboveButton);
 

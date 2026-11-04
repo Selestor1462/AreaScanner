@@ -220,9 +220,16 @@ public class BlockMatcher {
 
     public static boolean hasGravityBlockAbove(BlockPos pos, Level world, int distance) {
         if (world == null) return false;
+
+        // Must have air directly above
+        BlockState directlyAbove = world.getBlockState(pos.above());
+        if (!directlyAbove.isAir()) {
+            return false;
+        }
+
         int maxY = Math.min(world.getMaxY() - 1, pos.getY() + distance);
         BlockPos.MutableBlockPos checkPos = new BlockPos.MutableBlockPos();
-        for (int y = pos.getY() + 1; y <= maxY; y++) {
+        for (int y = pos.getY() + 2; y <= maxY; y++) {
             checkPos.set(pos.getX(), y, pos.getZ());
             BlockState state = world.getBlockState(checkPos);
             if (isGravityBlock(state)) {
