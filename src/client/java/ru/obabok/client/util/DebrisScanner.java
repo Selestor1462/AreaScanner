@@ -31,8 +31,37 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DebrisScanner {
+    public enum AxisMode {
+        BOTH("X & Z"),
+        X_ONLY("X only"),
+        Z_ONLY("Z only");
+
+        private final String display;
+
+        AxisMode(String display) {
+            this.display = display;
+        }
+
+        public String getDisplay() {
+            return display;
+        }
+
+        public AxisMode next() {
+            return values()[(ordinal() + 1) % values().length];
+        }
+
+        public static AxisMode fromString(String str) {
+            if (str == null) return BOTH;
+            String lower = str.trim().toLowerCase(Locale.ROOT);
+            if (lower.equals("x") || lower.equals("x_only") || lower.equals("xonly")) return X_ONLY;
+            if (lower.equals("z") || lower.equals("z_only") || lower.equals("zonly")) return Z_ONLY;
+            return BOTH;
+        }
+    }
+
     private static final AtomicBoolean running = new AtomicBoolean(false);
     private static volatile int threshold = 5;
+    private static volatile AxisMode axisMode = AxisMode.BOTH;
     private static volatile BlockArea area;
     private static volatile Level level;
 
@@ -63,6 +92,17 @@ public class DebrisScanner {
         return threshold;
     }
 
+    public static AxisMode getAxisMode() {
+        return axisMode;
+    }
+
+    public static void setAxisMode(AxisMode mode) {
+        axisMode = mode != null ? mode : AxisMode.BOTH;
+        if (running.get() || !chunkDebrisMap.isEmpty()) {
+            recalculateQualifyingDebris();
+        }
+    }
+
     public static long getAllChunksCount() {
         return allChunksCount;
     }
@@ -78,16 +118,24 @@ public class DebrisScanner {
     public static synchronized int getQualifyingRowCount() {
         int count = 0;
         int t = threshold;
-        for (HashSet<BlockPos> set : xRows.values()) {
-            if (set.size() > t) count++;
+        if (axisMode == AxisMode.BOTH || axisMode == AxisMode.X_ONLY) {
+            for (HashSet<BlockPos> set : xRows.values()) {
+                if (set.size() > t) count++;
+            }
         }
-        for (HashSet<BlockPos> set : zRows.values()) {
-            if (set.size() > t) count++;
+        if (axisMode == AxisMode.BOTH || axisMode == AxisMode.Z_ONLY) {
+            for (HashSet<BlockPos> set : zRows.values()) {
+                if (set.size() > t) count++;
+            }
         }
         return count;
     }
 
     public static void startScan(Level world, BlockArea scanArea, int targetThreshold) {
+        startScan(world, scanArea, targetThreshold, axisMode);
+    }
+
+    public static void startScan(Level world, BlockArea scanArea, int targetThreshold, AxisMode mode) {
         stopScan();
 
         if (world == null || scanArea == null || scanArea.isEmpty()) {
@@ -96,6 +144,7 @@ public class DebrisScanner {
 
         running.set(true);
         threshold = Math.max(1, targetThreshold);
+        axisMode = mode != null ? mode : AxisMode.BOTH;
         area = scanArea;
         level = world;
 
@@ -313,15 +362,19 @@ public class DebrisScanner {
         int t = threshold;
         Set<BlockPos> newQualifying = new HashSet<>();
 
-        for (HashSet<BlockPos> set : xRows.values()) {
-            if (set.size() > t) {
-                newQualifying.addAll(set);
+        if (axisMode == AxisMode.BOTH || axisMode == AxisMode.X_ONLY) {
+            for (HashSet<BlockPos> set : xRows.values()) {
+                if (set.size() > t) {
+                    newQualifying.addAll(set);
+                }
             }
         }
 
-        for (HashSet<BlockPos> set : zRows.values()) {
-            if (set.size() > t) {
-                newQualifying.addAll(set);
+        if (axisMode == AxisMode.BOTH || axisMode == AxisMode.Z_ONLY) {
+            for (HashSet<BlockPos> set : zRows.values()) {
+                if (set.size() > t) {
+                    newQualifying.addAll(set);
+                }
             }
         }
 
@@ -383,11 +436,12 @@ public class DebrisScanner {
                 int count = qualifyingDebris.size();
                 long scanned = scannedChunks.size();
                 long pending = pendingChunks.size();
+                String axisDesc = axisMode == AxisMode.BOTH ? "X/Z" : (axisMode == AxisMode.X_ONLY ? "X" : "Z");
 
                 if (pending == 0) {
                     mc.player.displayClientMessage(Component.literal(
-                            String.format("[AreaScanner] Debris row scan complete: checked %d/%d chunks. Found %d debris in %d rows (> %d)",
-                                    scanned, allChunksCount, count, rows, threshold)
+                            String.format("[AreaScanner] Debris row scan complete: checked %d/%d chunks. Found %d debris in %d %s-rows (> %d)",
+                                    scanned, allChunksCount, count, rows, axisDesc, threshold)
                     ).withColor(0xFFA500), false);
 
                     if (count > 0) {
