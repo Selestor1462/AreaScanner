@@ -10,6 +10,7 @@ import dev.xpple.clientarguments.arguments.CBlockPosArgument;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.Minecraft;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.core.BlockBox;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -20,6 +21,7 @@ import ru.obabok.client.gui.screens.ConfigGui;
 import ru.obabok.common.model.BlockArea;
 import ru.obabok.client.network.ClientNetwork;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 
