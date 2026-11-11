@@ -59,7 +59,9 @@ public class ChunkScheduler {
                     RenderUtil.clearRender();
                     HashSet<ChunkPos> unloadedChunks = new HashSet<>(Scan.unloadedChunks);
                     unloadedChunks.addAll(ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.getUnloadedChunks());
-                    RenderUtil.updateAll(Scan.selectedBlocks, unloadedChunks);
+                    synchronized (Scan.selectedBlocks) {
+                        RenderUtil.updateAll(Scan.selectedBlocks, unloadedChunks);
+                    }
                     //RenderUtil.addAllRenderBlocks(Scan.selectedBlocks);
                     //RenderUtil.addAllRenderChunks(Scan.unloadedChunks);
                     Scan.renderDirty = false;

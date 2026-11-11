@@ -83,8 +83,14 @@ public class ScanCommand {
                                                             return startScan(ctx, StringArgumentType.getString(ctx, "whitelist"), StringArgumentType.getString(ctx, "share_name"));
                                                         })))))
                 )
+                .then(ClientCommands.literal("debris")
+                        .then(ClientCommands.argument("threshold", IntegerArgumentType.integer(1))
+                                .executes(ctx -> startDebrisScan(ctx, IntegerArgumentType.getInteger(ctx, "threshold"))))
+                        .executes(ctx -> startDebrisScan(ctx, 5))
+                )
                 .then(ClientCommands.literal("stop").executes(context -> {
                     if (Scan.isRemoteProcessing()) ClientNetwork.stopScan();
+                    DebrisScanner.stopScan();
                     Scan.stopScan();
                     if (ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()) {
                         ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.stopAndClear();
@@ -233,6 +239,18 @@ public class ScanCommand {
         }
 
         ctx.getSource().sendFeedback(Component.literal("Scan started: " + area.getBoxes().size() + " region(s), whitelist: " + whitelistName).withColor(TextColor.GRAY));
+        return 1;
+    }
+
+    private static int startDebrisScan(CommandContext<FabricClientCommandSource> ctx, int threshold) {
+        BlockArea area = Scan.getArea();
+        if (area == null || area.getBoxes().isEmpty()) {
+            ctx.getSource().sendError(Component.literal("No regions defined. Use /scan area add first").withColor(TextColor.GRAY));
+            return 0;
+        }
+        Scan.stopScan();
+        DebrisScanner.startScan(ctx.getSource().getLevel(), area, threshold);
+        ctx.getSource().sendFeedback(Component.literal("Started debris row scan for rows > " + threshold + " in length").withColor(TextColor.GREEN));
         return 1;
     }
 

@@ -96,6 +96,7 @@ public class Scan {
     public static void stopScan(){
         processing = false;
         completionReported.set(true);
+        ru.obabok.client.util.DebrisScanner.stopScan();
         selectedBlocks.clear();
         unloadedChunks.clear();
         renderDirty = true;

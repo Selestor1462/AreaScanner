@@ -20,6 +20,7 @@ import ru.obabok.common.model.BlockArea;
 import ru.obabok.client.network.ClientNetwork;
 import ru.obabok.client.util.*;
 import ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner;
+import ru.obabok.client.util.DebrisScanner;
 import ru.obabok.common.References;
 
 public class AreaScannerClient implements ClientModInitializer {
@@ -33,6 +34,9 @@ public class AreaScannerClient implements ClientModInitializer {
 			ClientCommandRegistrationCallback.EVENT.register((commandDispatcher, commandRegistryAccess) -> ScanCommand.register(commandDispatcher));
 
 			ClientPlayerBlockBreakEvents.AFTER.register((clientWorld, clientPlayerEntity, blockPos, blockState) ->{
+				if (DebrisScanner.isScanning()) {
+					DebrisScanner.onBlockBreak(blockPos);
+				}
 				if (Scan.isRemoteProcessing()) return;
 				if(Scan.isProcessing()){
 					ChunkScheduler.addChunkToProcess(ChunkPos.containing(blockPos));
@@ -59,6 +63,7 @@ public class AreaScannerClient implements ClientModInitializer {
 
 			ClientChunkEvents.CHUNK_LOAD.register((clientWorld, worldChunk) -> {
 				AsyncObsidianScanner.onChunkLoaded(clientWorld, worldChunk.getPos());
+				DebrisScanner.onChunkLoaded(clientWorld, worldChunk.getPos());
 				BlockArea area = Scan.getArea();
 				if (area == null) return;
 
