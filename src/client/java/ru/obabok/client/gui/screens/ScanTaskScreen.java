@@ -361,7 +361,11 @@ public class ScanTaskScreen extends ScreenPlus {
         int y = height - 110;
         int x = 40;
         if (DebrisScanner.isScanning()) {
-            context.drawString(font, Component.literal("Debris scan in process... (> " + DebrisScanner.getThreshold() + " debris)"), x, y, CommonColors.WHITE);
+            boolean allDone = DebrisScanner.getPendingChunksCount() == 0 && DebrisScanner.getAllChunksCount() > 0;
+            String header = allDone
+                    ? "Debris scan complete (> " + DebrisScanner.getThreshold() + " debris)"
+                    : "Debris scan in process... (> " + DebrisScanner.getThreshold() + " debris)";
+            context.drawString(font, Component.literal(header), x, y, allDone ? CommonColors.GREEN : CommonColors.WHITE);
             context.drawString(font, Component.literal("All chunks: " + DebrisScanner.getAllChunksCount()), x, y += 15, CommonColors.WHITE);
             context.drawString(font, Component.literal("Unchecked chunks: " + DebrisScanner.getPendingChunksCount()), x, y += 15, CommonColors.WHITE);
             context.drawString(font, Component.literal("Qualifying rows: " + DebrisScanner.getQualifyingRowCount()), x, y += 15, CommonColors.WHITE);

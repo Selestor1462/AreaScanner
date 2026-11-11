@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.BlockBox;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.server.level.ServerLevel;
@@ -15,7 +16,10 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.PalettedContainerFactory;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.chunk.storage.SerializableChunkData;
+import net.minecraft.world.level.chunk.storage.SimpleRegionStorage;
 import ru.obabok.client.Scan;
 import ru.obabok.common.model.BlockArea;
 
@@ -128,6 +132,7 @@ public class DebrisScanner {
                 scanSingleplayerUnloadedChunks(affected);
             }
 
+            recalculateQualifyingDebris();
             reportScanStatus();
         }, scanExecutor);
     }
@@ -139,17 +144,55 @@ public class DebrisScanner {
             ServerLevel serverLevel = server.getLevel(level.dimension());
             if (serverLevel == null) return;
 
-            for (ChunkPos cp : affected) {
-                if (!running.get()) return;
-                if (scannedChunks.contains(cp)) continue;
+            SimpleRegionStorage storage = serverLevel.getChunkSource().chunkMap;
+            PalettedContainerFactory factory = PalettedContainerFactory.create(serverLevel.registryAccess());
 
-                try {
-                    ChunkAccess chunk = serverLevel.getChunk(cp.x, cp.z, ChunkStatus.EMPTY, false);
-                    if (chunk != null) {
-                        List<BlockPos> debris = scanChunk(chunk, area);
-                        processChunkDebris(cp, debris);
+            List<ChunkPos> remaining = new ArrayList<>();
+            for (ChunkPos cp : affected) {
+                if (!scannedChunks.contains(cp)) {
+                    remaining.add(cp);
+                }
+            }
+
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            for (ChunkPos cp : remaining) {
+                if (!running.get()) return;
+
+                // 1. If currently loaded in server memory as a full chunk:
+                ChunkAccess loaded = serverLevel.getChunkSource().getChunk(cp.x, cp.z, ChunkStatus.FULL, false);
+                if (loaded != null) {
+                    List<BlockPos> debris = scanChunk(loaded, area);
+                    processChunkDebris(cp, debris);
+                    continue;
+                }
+
+                // 2. Read from disk via SimpleRegionStorage:
+                CompletableFuture<Void> future = storage.read(cp).thenAcceptAsync(nbtOpt -> {
+                    if (!running.get()) return;
+                    if (nbtOpt != null && nbtOpt.isPresent()) {
+                        try {
+                            CompoundTag tag = storage.upgradeChunkTag(nbtOpt.get(), -1);
+                            SerializableChunkData data = SerializableChunkData.parse(serverLevel, factory, tag);
+                            List<BlockPos> debris = scanSerializableChunkData(data, cp, area);
+                            processChunkDebris(cp, debris);
+                        } catch (Exception e) {
+                            processChunkDebris(cp, Collections.emptyList());
+                        }
+                    } else {
+                        // Chunk not generated / empty
+                        processChunkDebris(cp, Collections.emptyList());
                     }
-                } catch (Exception ignored) {}
+                }, scanExecutor);
+                futures.add(future);
+
+                if (futures.size() >= 128) {
+                    CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                    futures.clear();
+                }
+            }
+
+            if (!futures.isEmpty()) {
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             }
         } catch (Exception ignored) {}
     }
@@ -173,6 +216,56 @@ public class DebrisScanner {
         }
     }
 
+    public static List<BlockPos> scanSection(LevelChunkSection section, int sectionBottomY, int chunkMinX, int chunkMinZ, BlockArea scanArea, List<BlockBox> relevantBoxes) {
+        List<BlockPos> found = new ArrayList<>();
+        if (section == null || section.hasOnlyAir()) return found;
+        if (!section.maybeHas(state -> state.is(Blocks.ANCIENT_DEBRIS))) return found;
+
+        int topY = sectionBottomY + 15;
+        boolean intersectsY = false;
+        for (BlockBox box : relevantBoxes) {
+            if (box.min().getY() <= topY && box.max().getY() >= sectionBottomY) {
+                intersectsY = true;
+                break;
+            }
+        }
+        if (!intersectsY) return found;
+
+        for (int localY = 0; localY < 16; localY++) {
+            int y = sectionBottomY + localY;
+            for (int localZ = 0; localZ < 16; localZ++) {
+                int z = chunkMinZ + localZ;
+                for (int localX = 0; localX < 16; localX++) {
+                    int x = chunkMinX + localX;
+                    BlockState state = section.getBlockState(localX, localY, localZ);
+                    if (state.is(Blocks.ANCIENT_DEBRIS)) {
+                        if (scanArea.contains(x, y, z)) {
+                            found.add(new BlockPos(x, y, z));
+                        }
+                    }
+                }
+            }
+        }
+        return found;
+    }
+
+    public static List<BlockPos> scanSerializableChunkData(SerializableChunkData data, ChunkPos chunkPos, BlockArea scanArea) {
+        List<BlockPos> found = new ArrayList<>();
+        if (data == null || scanArea == null) return found;
+
+        List<BlockBox> relevantBoxes = scanArea.getBoxesIntersectingChunk(chunkPos);
+        if (relevantBoxes.isEmpty()) return found;
+
+        int chunkMinX = chunkPos.getMinBlockX();
+        int chunkMinZ = chunkPos.getMinBlockZ();
+
+        for (SerializableChunkData.SectionData sectionData : data.sectionData()) {
+            int bottomY = sectionData.y() << 4;
+            found.addAll(scanSection(sectionData.chunkSection(), bottomY, chunkMinX, chunkMinZ, scanArea, relevantBoxes));
+        }
+        return found;
+    }
+
     public static List<BlockPos> scanChunk(ChunkAccess chunk, BlockArea scanArea) {
         List<BlockPos> found = new ArrayList<>();
         if (chunk == null || scanArea == null) return found;
@@ -188,38 +281,8 @@ public class DebrisScanner {
         int chunkMinZ = chunkPos.getMinBlockZ();
 
         for (int sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
-            LevelChunkSection section = sections[sectionIndex];
-            if (section == null || section.hasOnlyAir()) continue;
-            // Palette check: instantly rejects sections without ancient debris
-            if (!section.maybeHas(state -> state.is(Blocks.ANCIENT_DEBRIS))) continue;
-
             int bottomY = chunk.getMinY() + (sectionIndex << 4);
-            int topY = bottomY + 15;
-
-            boolean intersectsY = false;
-            for (BlockBox box : relevantBoxes) {
-                if (box.min().getY() <= topY && box.max().getY() >= bottomY) {
-                    intersectsY = true;
-                    break;
-                }
-            }
-            if (!intersectsY) continue;
-
-            for (int localY = 0; localY < 16; localY++) {
-                int y = bottomY + localY;
-                for (int localZ = 0; localZ < 16; localZ++) {
-                    int z = chunkMinZ + localZ;
-                    for (int localX = 0; localX < 16; localX++) {
-                        int x = chunkMinX + localX;
-                        BlockState state = section.getBlockState(localX, localY, localZ);
-                        if (state.is(Blocks.ANCIENT_DEBRIS)) {
-                            if (scanArea.contains(x, y, z)) {
-                                found.add(new BlockPos(x, y, z));
-                            }
-                        }
-                    }
-                }
-            }
+            found.addAll(scanSection(sections[sectionIndex], bottomY, chunkMinX, chunkMinZ, scanArea, relevantBoxes));
         }
         return found;
     }
@@ -242,9 +305,8 @@ public class DebrisScanner {
                 long zKey = getZRowKey(pos.getY(), pos.getX());
                 zRows.computeIfAbsent(zKey, k -> new HashSet<>()).add(pos);
             }
+            recalculateQualifyingDebris();
         }
-
-        recalculateQualifyingDebris();
     }
 
     public static synchronized void recalculateQualifyingDebris() {
@@ -283,10 +345,16 @@ public class DebrisScanner {
                 scanExecutor.execute(() -> {
                     List<BlockPos> debris = scanChunk(chunk, area);
                     processChunkDebris(chunkPos, debris);
+                    if (pendingChunks.isEmpty()) {
+                        reportScanStatus();
+                    }
                 });
             } else {
                 List<BlockPos> debris = scanChunk(chunk, area);
                 processChunkDebris(chunkPos, debris);
+                if (pendingChunks.isEmpty()) {
+                    reportScanStatus();
+                }
             }
         }
     }
@@ -314,13 +382,22 @@ public class DebrisScanner {
                 int rows = getQualifyingRowCount();
                 int count = qualifyingDebris.size();
                 long scanned = scannedChunks.size();
-                mc.player.displayClientMessage(Component.literal(
-                        String.format("[AreaScanner] Debris row scan: checked %d/%d chunks. Found %d debris in %d rows (> %d)",
-                                scanned, allChunksCount, count, rows, threshold)
-                ).withColor(0xFFA500), false);
+                long pending = pendingChunks.size();
 
-                if (count > 0 && scanned >= allChunksCount) {
-                    mc.player.playSound(SoundEvents.EXPERIENCE_ORB_PICKUP, 1, 1);
+                if (pending == 0) {
+                    mc.player.displayClientMessage(Component.literal(
+                            String.format("[AreaScanner] Debris row scan complete: checked %d/%d chunks. Found %d debris in %d rows (> %d)",
+                                    scanned, allChunksCount, count, rows, threshold)
+                    ).withColor(0xFFA500), false);
+
+                    if (count > 0) {
+                        mc.player.playSound(SoundEvents.EXPERIENCE_ORB_PICKUP, 1, 1);
+                    }
+                } else {
+                    mc.player.displayClientMessage(Component.literal(
+                            String.format("[AreaScanner] Debris row scan: checked %d/%d loaded chunks (%d remaining). Move around to scan remaining chunks.",
+                                    scanned, allChunksCount, pending)
+                    ).withColor(0xFFA500), false);
                 }
             });
         }
