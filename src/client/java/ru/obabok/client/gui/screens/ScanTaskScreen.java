@@ -9,6 +9,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.StringWidget;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -229,11 +230,18 @@ public class ScanTaskScreen extends ScreenPlus {
         clearLavaBtn.active = AsyncObsidianScanner.canStopOrClear();
         addRenderableWidget(clearLavaBtn);
 
-        addRenderableWidget(new StringWidget(180, height - 55, 40, 20, Component.literal("Row >"), font));
-        debrisThresholdField = new EditBox(font, 225, height - 55, 30, 20, Component.empty());
+        addRenderableWidget(new StringWidget(172, height - 55, 38, 20, Component.literal("Row >"), font));
+        debrisThresholdField = new EditBox(font, 212, height - 55, 28, 20, Component.empty());
         debrisThresholdField.setValue(String.valueOf(DebrisScanner.getThreshold()));
         debrisThresholdField.active = !Scan.isProcessing() && !DebrisScanner.isScanning();
         addRenderableWidget(debrisThresholdField);
+
+        Button axisToggleBtn = Button.builder(Component.literal("Axis: " + DebrisScanner.getAxisMode().getDisplay()), btn -> {
+            DebrisScanner.setAxisMode(DebrisScanner.getAxisMode().next());
+            btn.setMessage(Component.literal("Axis: " + DebrisScanner.getAxisMode().getDisplay()));
+        }).bounds(244, height - 55, 72, 20).build();
+        axisToggleBtn.setTooltip(Tooltip.create(Component.literal("Filter horizontal rows: X only, Z only, or X & Z")));
+        addRenderableWidget(axisToggleBtn);
 
         Button debrisScanButton = Button.builder(Component.literal("Debris scan"), btn -> {
             if (minecraft.player == null || minecraft.level == null) return;
@@ -251,7 +259,7 @@ public class ScanTaskScreen extends ScreenPlus {
                 th = Math.max(1, Integer.parseInt(debrisThresholdField.getValue().trim()));
             } catch (Exception ignored) {}
             DebrisScanner.startScan(minecraft.level, area, th);
-        }).bounds(260, height - 55, 80, 20).build();
+        }).bounds(320, height - 55, 75, 20).build();
         debrisScanButton.active = !Scan.isProcessing() && !DebrisScanner.isScanning();
         addRenderableWidget(debrisScanButton);
 
@@ -262,7 +270,7 @@ public class ScanTaskScreen extends ScreenPlus {
                 Scan.renderDirty = true;
             }
             minecraft.setScreenAndShow(new ScanTaskScreen(parent, Scan.getArea()));
-        }).bounds(345, height - 55, 85, 20).build();
+        }).bounds(399, height - 55, 75, 20).build();
         clearDebrisBtn.active = DebrisScanner.isScanning() || DebrisScanner.getQualifyingDebrisCount() > 0;
         addRenderableWidget(clearDebrisBtn);
 
@@ -363,7 +371,12 @@ public class ScanTaskScreen extends ScreenPlus {
         int y = height - 110;
         int x = 40;
         if (DebrisScanner.isScanning()) {
-            context.text(font, Component.literal("Debris scan in process... (> " + DebrisScanner.getThreshold() + " debris)"), x, y, CommonColors.WHITE);
+            boolean allDone = DebrisScanner.getPendingChunksCount() == 0 && DebrisScanner.getAllChunksCount() > 0;
+            String axisDisplay = DebrisScanner.getAxisMode().getDisplay();
+            String header = allDone
+                    ? "Debris scan complete [Axis: " + axisDisplay + "] (> " + DebrisScanner.getThreshold() + " debris)"
+                    : "Debris scan in process... [Axis: " + axisDisplay + "] (> " + DebrisScanner.getThreshold() + " debris)";
+            context.text(font, Component.literal(header), x, y, allDone ? CommonColors.GREEN : CommonColors.WHITE);
             context.text(font, Component.literal("All chunks: " + DebrisScanner.getAllChunksCount()), x, y += 15, CommonColors.WHITE);
             context.text(font, Component.literal("Unchecked chunks: " + DebrisScanner.getPendingChunksCount()), x, y += 15, CommonColors.WHITE);
             context.text(font, Component.literal("Qualifying rows: " + DebrisScanner.getQualifyingRowCount()), x, y += 15, CommonColors.WHITE);

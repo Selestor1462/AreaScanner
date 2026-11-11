@@ -85,8 +85,11 @@ public class ScanCommand {
                 )
                 .then(ClientCommands.literal("debris")
                         .then(ClientCommands.argument("threshold", IntegerArgumentType.integer(1))
-                                .executes(ctx -> startDebrisScan(ctx, IntegerArgumentType.getInteger(ctx, "threshold"))))
-                        .executes(ctx -> startDebrisScan(ctx, 5))
+                                .then(ClientCommands.argument("axis", StringArgumentType.word())
+                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(List.of("both", "x", "z"), builder))
+                                        .executes(ctx -> startDebrisScan(ctx, IntegerArgumentType.getInteger(ctx, "threshold"), StringArgumentType.getString(ctx, "axis"))))
+                                .executes(ctx -> startDebrisScan(ctx, IntegerArgumentType.getInteger(ctx, "threshold"), null)))
+                        .executes(ctx -> startDebrisScan(ctx, 5, null))
                 )
                 .then(ClientCommands.literal("stop").executes(context -> {
                     if (Scan.isRemoteProcessing()) ClientNetwork.stopScan();
@@ -242,15 +245,16 @@ public class ScanCommand {
         return 1;
     }
 
-    private static int startDebrisScan(CommandContext<FabricClientCommandSource> ctx, int threshold) {
+    private static int startDebrisScan(CommandContext<FabricClientCommandSource> ctx, int threshold, @Nullable String axisStr) {
         BlockArea area = Scan.getArea();
         if (area == null || area.getBoxes().isEmpty()) {
             ctx.getSource().sendError(Component.literal("No regions defined. Use /scan area add first").withColor(TextColor.GRAY));
             return 0;
         }
         Scan.stopScan();
-        DebrisScanner.startScan(ctx.getSource().getLevel(), area, threshold);
-        ctx.getSource().sendFeedback(Component.literal("Started debris row scan for rows > " + threshold + " in length").withColor(TextColor.GREEN));
+        DebrisScanner.AxisMode mode = axisStr != null ? DebrisScanner.AxisMode.fromString(axisStr) : DebrisScanner.getAxisMode();
+        DebrisScanner.startScan(ctx.getSource().getLevel(), area, threshold, mode);
+        ctx.getSource().sendFeedback(Component.literal("Started debris row scan for " + mode.getDisplay() + " rows > " + threshold + " in length").withColor(TextColor.GREEN));
         return 1;
     }
 
