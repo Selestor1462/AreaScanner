@@ -86,9 +86,18 @@ public class ScanCommand {
                                                             return startScan(ctx, StringArgumentType.getString(ctx, "whitelist"), StringArgumentType.getString(ctx, "share_name"));
                                                         })))))
                 )
+                .then(literal("debris")
+                        .then(argument("threshold", IntegerArgumentType.integer(1))
+                                .executes(ctx -> startDebrisScan(ctx, IntegerArgumentType.getInteger(ctx, "threshold"))))
+                        .executes(ctx -> startDebrisScan(ctx, 5))
+                )
                 .then(literal("stop").executes(context -> {
                     if (Scan.isRemoteProcessing()) ClientNetwork.stopScan();
+                    DebrisScanner.stopScan();
                     Scan.stopScan();
+                    if (ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()) {
+                        ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.stopAndClear();
+                    }
                     context.getSource().sendFeedback(Component.literal("Scan stopped"));
                     return 1;
                 }))
@@ -198,8 +207,24 @@ public class ScanCommand {
         }
         int count = area.getBoxes().size();
         area.clearAll();
+        DebrisScanner.stopScan();
         Scan.stopScan();
+        if (ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()) {
+            ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.stopAndClear();
+        }
         ctx.getSource().sendFeedback(Component.literal("Cleared " + count + " region(s)").withColor(CommonColors.GRAY));
+        return 1;
+    }
+
+    private static int startDebrisScan(CommandContext<FabricClientCommandSource> ctx, int threshold) {
+        BlockArea area = Scan.getArea();
+        if (area == null || area.getBoxes().isEmpty()) {
+            ctx.getSource().sendError(Component.literal("No regions defined. Use /scan area add first").withColor(CommonColors.GRAY));
+            return 0;
+        }
+        Scan.stopScan();
+        DebrisScanner.startScan(ctx.getSource().getWorld(), area, threshold);
+        ctx.getSource().sendFeedback(Component.literal("Started debris row scan for rows > " + threshold + " in length").withColor(CommonColors.GREEN));
         return 1;
     }
 

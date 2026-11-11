@@ -112,4 +112,20 @@ public class BlockArea {
         }
         return false;
     }
+
+    public boolean contains(BlockPos pos) {
+        return contains(pos.getX(), pos.getY(), pos.getZ());
+    }
+
+    public boolean contains(int x, int y, int z) {
+        for (int i = 0; i < ranges.size(); i++) {
+            BlockBox box = ranges.get(i);
+            if (x >= box.min().getX() && x <= box.max().getX()
+                    && y >= box.min().getY() && y <= box.max().getY()
+                    && z >= box.min().getZ() && z <= box.max().getZ()) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

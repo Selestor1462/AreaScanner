@@ -23,6 +23,8 @@ import ru.obabok.client.gui.widgets.ToggelableWidgedDropDownList;
 import ru.obabok.common.model.BlockArea;
 import ru.obabok.client.models.ScreenPlus;
 import ru.obabok.client.network.ClientNetwork;
+import ru.obabok.client.util.DebrisScanner;
+import ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +39,7 @@ public class ScanTaskScreen extends ScreenPlus {
     private EditBox maxX, maxY, maxZ;
     private final List<CoordButton> coordButtons = new ArrayList<>();
     private EditBox shareNameField;
+    private EditBox debrisThresholdField;
     private Button startButton;
 
     public static int selectedBoxIndex = 0;
@@ -201,6 +204,66 @@ public class ScanTaskScreen extends ScreenPlus {
         shareNameField.active = !Scan.isProcessing();
         addRenderableWidget(shareNameField);
 
+        Button lavaScanButton = Button.builder(Component.literal("Lava scan"), btn -> {
+            if (minecraft.player == null || minecraft.level == null) return;
+            if (Scan.isProcessing() || DebrisScanner.isScanning()) {
+                minecraft.player.displayClientMessage(Component.literal("Stop the current scan first"), false);
+                return;
+            }
+            BlockArea area = Scan.getArea();
+            if (area == null || area.isEmpty()) {
+                minecraft.player.displayClientMessage(Component.literal("Set a scan area first"), false);
+                return;
+            }
+            AsyncObsidianScanner.startAsyncScan(minecraft.level, area);
+        }).bounds(20, height - 55, 75, 20).build();
+        lavaScanButton.active = !Scan.isProcessing() && !DebrisScanner.isScanning();
+        addRenderableWidget(lavaScanButton);
+
+        Button clearLavaBtn = Button.builder(Component.literal("Clear lava"), btn -> {
+            AsyncObsidianScanner.stopAndClear();
+            minecraft.setScreen(new ScanTaskScreen(parent, Scan.getArea()));
+        }).bounds(100, height - 55, 75, 20).build();
+        clearLavaBtn.active = AsyncObsidianScanner.canStopOrClear();
+        addRenderableWidget(clearLavaBtn);
+
+        addRenderableWidget(new StringWidget(180, height - 55, 40, 20, Component.literal("Row >"), font));
+        debrisThresholdField = new EditBox(font, 225, height - 55, 30, 20, Component.empty());
+        debrisThresholdField.setValue(String.valueOf(DebrisScanner.getThreshold()));
+        debrisThresholdField.active = !Scan.isProcessing() && !DebrisScanner.isScanning();
+        addRenderableWidget(debrisThresholdField);
+
+        Button debrisScanButton = Button.builder(Component.literal("Debris scan"), btn -> {
+            if (minecraft.player == null || minecraft.level == null) return;
+            if (Scan.isProcessing() || DebrisScanner.isScanning()) {
+                minecraft.player.displayClientMessage(Component.literal("Stop the current scan first"), false);
+                return;
+            }
+            BlockArea area = Scan.getArea();
+            if (area == null || area.isEmpty()) {
+                minecraft.player.displayClientMessage(Component.literal("Set a scan area first"), false);
+                return;
+            }
+            int th = 5;
+            try {
+                th = Math.max(1, Integer.parseInt(debrisThresholdField.getValue().trim()));
+            } catch (Exception ignored) {}
+            DebrisScanner.startScan(minecraft.level, area, th);
+        }).bounds(260, height - 55, 80, 20).build();
+        debrisScanButton.active = !Scan.isProcessing() && !DebrisScanner.isScanning();
+        addRenderableWidget(debrisScanButton);
+
+        Button clearDebrisBtn = Button.builder(Component.literal("Clear debris"), btn -> {
+            DebrisScanner.stopScan();
+            synchronized (Scan.selectedBlocks) {
+                Scan.selectedBlocks.clear();
+                Scan.renderDirty = true;
+            }
+            minecraft.setScreen(new ScanTaskScreen(parent, Scan.getArea()));
+        }).bounds(345, height - 55, 85, 20).build();
+        clearDebrisBtn.active = DebrisScanner.isScanning() || DebrisScanner.getQualifyingDebrisCount() > 0;
+        addRenderableWidget(clearDebrisBtn);
+
         //back button
         addRenderableWidget(Button.builder(Component.literal("Back"), btn -> minecraft.setScreen(parent)).bounds( 30, height - 30, 50, 20).build());
 
@@ -228,10 +291,16 @@ public class ScanTaskScreen extends ScreenPlus {
             if (Scan.isRemoteProcessing()) {
                 ClientNetwork.stopScan();
             }
+            DebrisScanner.stopScan();
             Scan.stopScan();
+            if (ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()) {
+                ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.stopAndClear();
+            }
             minecraft.setScreen(new ScanTaskScreen(parent, box));
         }).bounds(180, height - 30, 80, 20).build();
-        stopScanBtn.active = Scan.isProcessing() || Scan.isRemoteProcessing();
+        stopScanBtn.active = Scan.isProcessing() || Scan.isRemoteProcessing()
+                || ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()
+                || DebrisScanner.isScanning();
         addRenderableWidget(stopScanBtn);
 
         Button saveStateBtn = Button.builder(Component.literal("Save state"), btn -> {
@@ -291,7 +360,13 @@ public class ScanTaskScreen extends ScreenPlus {
     public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
         int y = height - 110;
         int x = 40;
-        if(Scan.isProcessing()){
+        if (DebrisScanner.isScanning()) {
+            context.drawString(font, Component.literal("Debris scan in process... (> " + DebrisScanner.getThreshold() + " debris)"), x, y, CommonColors.WHITE);
+            context.drawString(font, Component.literal("All chunks: " + DebrisScanner.getAllChunksCount()), x, y += 15, CommonColors.WHITE);
+            context.drawString(font, Component.literal("Unchecked chunks: " + DebrisScanner.getPendingChunksCount()), x, y += 15, CommonColors.WHITE);
+            context.drawString(font, Component.literal("Qualifying rows: " + DebrisScanner.getQualifyingRowCount()), x, y += 15, CommonColors.WHITE);
+            context.drawString(font, Component.literal("Selected blocks: " + Scan.selectedBlocks.size()), x, y += 15, CommonColors.WHITE);
+        } else if(Scan.isProcessing()){
             context.drawString(font, Component.literal("Scan in process..."), x, y, CommonColors.WHITE);
             context.drawString(font, Component.literal("All chunks: " + Scan.getAllChunksCounter()), x, y += 15, CommonColors.WHITE);
             context.drawString(font, Component.literal("Unchecked chunks: " + Scan.unloadedChunks.size()), x, y += 15, CommonColors.WHITE);
@@ -301,7 +376,7 @@ public class ScanTaskScreen extends ScreenPlus {
             context.drawString(font, Component.literal("Scan is stopped"), x, y, CommonColors.WHITE);
         }
 
-        startButton.active = whitelistSelectorList.getSelectedEntry() != null && !whitelistSelectorList.getSelectedEntry().isEmpty() && Scan.getArea() != null && !Scan.isProcessing();
+        startButton.active = whitelistSelectorList.getSelectedEntry() != null && !whitelistSelectorList.getSelectedEntry().isEmpty() && Scan.getArea() != null && !Scan.isProcessing() && !DebrisScanner.isScanning();
         context.renderOutline(15,55, 110, 150, CommonColors.LIGHT_GRAY);
         context.renderOutline(135,55, 110, 150, CommonColors.LIGHT_GRAY);
         for (CoordButton entry : coordButtons) {

@@ -4,13 +4,14 @@ package ru.obabok.common.model;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
-import java.util.StringJoiner;
 
 public class WhitelistItem {
     public String block;
     public String waterlogged;
     public String blastResistance;
     public String pistonBehavior;
+    public boolean gravityColumn;
+    public boolean gravityAbove;
 
 
     public WhitelistItem(@Nullable String _block, @Nullable String _waterlogged, @Nullable String _blastResistance, @Nullable String _pistonBehavior){
@@ -30,31 +31,30 @@ public class WhitelistItem {
 
     @Override
     public String toString() {
-        String nl = System.lineSeparator();
-
-        StringJoiner joiner = new StringJoiner(
-                "," + nl + "  ",
-                "{" + nl + "  ",
-                nl + "}"
-        ).setEmptyValue("{}");
-
-        if (block != null) {
-            joiner.add("block: " + block);
+        StringBuilder builder = new StringBuilder("[");
+        if(block != null){
+            builder.append("block:").append(block);
         }
-
-        if (waterlogged != null) {
-            joiner.add("waterlogged: " + waterlogged);
+        builder.append(" and ");
+        if(waterlogged != null){
+            builder.append("waterlogged:").append(waterlogged);
         }
-
-        if (pistonBehavior != null) {
-            joiner.add("pistonBehavior: " + pistonBehavior);
+        builder.append(" and ");
+        if(blastResistance != null){
+            builder.append("blastResistance:").append(blastResistance);
         }
-
-        if (blastResistance != null) {
-            joiner.add("blastResistance: " + blastResistance);
+        builder.append(" and ");
+        if(pistonBehavior != null){
+            builder.append("pistonBehavior:").append(pistonBehavior);
         }
-
-        return joiner.toString();
+        if(gravityColumn){
+            builder.append(" and gravityColumn:7+");
+        }
+        if(gravityAbove){
+            builder.append(" and gravityAbove");
+        }
+        builder.append("]");
+        return builder.toString();
     }
 
     @Override
@@ -65,6 +65,13 @@ public class WhitelistItem {
         return Objects.equals(block, that.block) &&
                 Objects.equals(waterlogged, that.waterlogged) &&
                 Objects.equals(blastResistance, that.blastResistance) &&
-                Objects.equals(pistonBehavior, that.pistonBehavior);
+                Objects.equals(pistonBehavior, that.pistonBehavior) &&
+                gravityColumn == that.gravityColumn &&
+                gravityAbove == that.gravityAbove;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(block, waterlogged, blastResistance, pistonBehavior, gravityColumn, gravityAbove);
     }
 }

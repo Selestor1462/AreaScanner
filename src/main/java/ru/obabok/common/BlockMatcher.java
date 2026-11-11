@@ -3,10 +3,13 @@ package ru.obabok.common;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.FluidState;
@@ -33,6 +36,7 @@ public class BlockMatcher {
         boolean meet = false;
         for (WhitelistItem whitelistItem : whitelist.whitelist) {
             boolean insideMeet = true;
+            boolean gravityColumnMatches = false;
             if (whitelistItem.block != null){
                 String input = whitelistItem.block.trim();
                 String operator = null;
@@ -55,22 +59,57 @@ public class BlockMatcher {
                     insideMeet = false;
                 }
                 try {
-                    if(!block.isEmpty() && BuiltInRegistries.BLOCK.containsKey(Identifier.parse(block))){
-                        Block whitelistBlock = BuiltInRegistries.BLOCK.getValue(Identifier.parse(block));
+                    if (!block.isEmpty()) {
                         Block actual = blockState.getBlock();
-                        boolean matches = switch (operator) {
-                            case "=" -> whitelistBlock == actual;
-                            case "≠" -> whitelistBlock != actual;
-                            default -> false;
-                        };
-                        if (!matches) {
+                        boolean isMatch = false;
+
+                        if (block.equals("#redstone_gravity") || block.equals("#redstone_ore_gravity") || block.equals("#redstone_with_gravity")) {
+                            boolean isRedstone = actual == Blocks.REDSTONE_ORE || actual == Blocks.DEEPSLATE_REDSTONE_ORE;
+                            boolean matches = "=".equals(operator) ? isRedstone : !isRedstone;
+                            if (matches && hasGravityBlockAbove(pos, world)) {
+                                isMatch = true;
+                            }
+                        } else if (block.startsWith("#")) {
+                            String tagStr = block.substring(1);
+                            if (!tagStr.contains(":")) {
+                                tagStr = "minecraft:" + tagStr;
+                            }
+                            TagKey<Block> tagKey = TagKey.create(Registries.BLOCK, Identifier.parse(tagStr));
+                            boolean inTag = blockState.is(tagKey);
+                            isMatch = switch (operator) {
+                                case "=" -> inTag;
+                                case "≠" -> !inTag;
+                                default -> false;
+                            };
+                        } else if (BuiltInRegistries.BLOCK.containsKey(Identifier.parse(block))) {
+                            Block whitelistBlock = BuiltInRegistries.BLOCK.getValue(Identifier.parse(block));
+                            isMatch = switch (operator) {
+                                case "=" -> whitelistBlock == actual;
+                                case "≠" -> whitelistBlock != actual;
+                                default -> false;
+                            };
+                            gravityColumnMatches = "=".equals(operator)
+                                    && isMatch
+                                    && actual instanceof FallingBlock
+                                    && hasGravityColumn(actual, pos, world);
+                        } else {
+                            insideMeet = false;
+                        }
+
+                        if (!isMatch) {
                             insideMeet = false;
                         }
                     }
                 } catch (Exception e) {
-                    References.LOGGER.error("Block is corrupted");
+                    References.LOGGER.error("Block is corrupted: " + e.getMessage());
                     insideMeet = false;
                 }
+            }
+            if (whitelistItem.gravityColumn && !gravityColumnMatches) {
+                insideMeet = false;
+            }
+            if (whitelistItem.gravityAbove && !hasGravityBlockAbove(pos, world)) {
+                insideMeet = false;
             }
             /*&& whitelistItem.block != blockState.getBlock()) {
                 insideMeet = false;
@@ -162,6 +201,46 @@ public class BlockMatcher {
             meet = meet || insideMeet;
         }
         return meet;
+    }
+
+    private static boolean hasGravityColumn(Block block, BlockPos pos, Level world) {
+        if (world == null) return false;
+
+        int height = 1;
+        for (int offset = 1; offset < 7 && height < 7; offset++) {
+            if (world.getBlockState(pos.above(offset)).getBlock() != block) break;
+            height++;
+        }
+        for (int offset = 1; offset < 7 && height < 7; offset++) {
+            if (world.getBlockState(pos.below(offset)).getBlock() != block) break;
+            height++;
+        }
+        return height >= 7;
+    }
+
+    public static boolean hasGravityBlockAbove(BlockPos pos, Level world) {
+        if (world == null) return false;
+
+        // Must have air directly above
+        BlockState directlyAbove = world.getBlockState(pos.above());
+        if (!directlyAbove.isAir()) {
+            return false;
+        }
+
+        int maxY = world.getMaxY() - 1;
+        BlockPos.MutableBlockPos checkPos = new BlockPos.MutableBlockPos();
+        for (int y = pos.getY() + 2; y <= maxY; y++) {
+            checkPos.set(pos.getX(), y, pos.getZ());
+            BlockState state = world.getBlockState(checkPos);
+            if (isGravityBlock(state)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isGravityBlock(BlockState state) {
+        return state != null && state.getBlock() instanceof FallingBlock;
     }
 
     public static Optional<Float> getBlastResistance(BlockState blockState, FluidState fluidState) {
