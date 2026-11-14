@@ -48,6 +48,11 @@ public class HudRender {
     private static float clusterUpdateTimer = 0f;
     private static final float UPDATE_INTERVAL = 20f;
 
+    private static BlockPos cachedNearestPos = null;
+    private static double cachedNearestDistSq = 0;
+    private static long lastNearestCheckTime = 0;
+    private static int lastSelectedBlocksCount = -1;
+
 
     private static String renderTime;
     private static long lastUpdateTime = 0;
@@ -100,8 +105,17 @@ public class HudRender {
 
             try {
                 if(!Scan.selectedBlocks.isEmpty()){
-                    BlockPos pos = Scan.selectedBlocks.iterator().next();
-                    lines.add(Component.literal("Selected blocks: %d -> [%d, %d, %d]".formatted(Scan.selectedBlocks.size(), pos.getX(), pos.getY(), pos.getZ())));
+                    LocalPlayer player = Minecraft.getInstance().player;
+                    Vec3 playerPos = player != null ? player.position() : null;
+                    updateNearestBlock(playerPos);
+                    if (cachedNearestPos != null) {
+                        int distMeters = (int) Math.round(Math.sqrt(cachedNearestDistSq));
+                        lines.add(Component.literal("Selected blocks: %d -> [%d, %d, %d] (%dm)"
+                                .formatted(Scan.selectedBlocks.size(), cachedNearestPos.getX(), cachedNearestPos.getY(), cachedNearestPos.getZ(), distMeters)));
+                    } else {
+                        BlockPos pos = Scan.selectedBlocks.iterator().next();
+                        lines.add(Component.literal("Selected blocks: %d -> [%d, %d, %d]".formatted(Scan.selectedBlocks.size(), pos.getX(), pos.getY(), pos.getZ())));
+                    }
                 }
                 boolean hasClusters = !Scan.selectedBlocks.isEmpty() || !Scan.unloadedChunks.isEmpty() || AsyncObsidianScanner.hasRenderableMarkers();
                 if(hasClusters && (Config.Generic.LOD2_HUD.getBooleanValue() || Config.Generic.UNLOADED_CHUNK_HUD_RENDER.getBooleanValue())){
@@ -549,5 +563,51 @@ public class HudRender {
             return m + "m " + sec + "s";
         }
         return sec + "s";
+    }
+
+    private static void updateNearestBlock(Vec3 playerPos) {
+        if (playerPos == null || Scan.selectedBlocks.isEmpty()) {
+            cachedNearestPos = null;
+            cachedNearestDistSq = 0;
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        int currentSize = Scan.selectedBlocks.size();
+        if (cachedNearestPos != null
+                && currentSize == lastSelectedBlocksCount
+                && (now - lastNearestCheckTime < 250)
+                && Scan.selectedBlocks.contains(cachedNearestPos)) {
+            double dx = cachedNearestPos.getX() + 0.5 - playerPos.x;
+            double dy = cachedNearestPos.getY() + 0.5 - playerPos.y;
+            double dz = cachedNearestPos.getZ() + 0.5 - playerPos.z;
+            cachedNearestDistSq = dx * dx + dy * dy + dz * dz;
+            return;
+        }
+
+        lastNearestCheckTime = now;
+        lastSelectedBlocksCount = currentSize;
+
+        BlockPos best = null;
+        double minDistanceSq = Double.MAX_VALUE;
+        double px = playerPos.x;
+        double py = playerPos.y;
+        double pz = playerPos.z;
+
+        synchronized (Scan.selectedBlocks) {
+            for (BlockPos pos : Scan.selectedBlocks) {
+                double dx = pos.getX() + 0.5 - px;
+                double dy = pos.getY() + 0.5 - py;
+                double dz = pos.getZ() + 0.5 - pz;
+                double distSq = dx * dx + dy * dy + dz * dz;
+                if (distSq < minDistanceSq) {
+                    minDistanceSq = distSq;
+                    best = pos;
+                }
+            }
+        }
+
+        cachedNearestPos = best;
+        cachedNearestDistSq = minDistanceSq;
     }
 }
