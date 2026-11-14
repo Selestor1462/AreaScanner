@@ -1,10 +1,7 @@
 package ru.obabok.client.gui.screens;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.StringWidget;
-import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.*;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -34,15 +31,14 @@ public class WhitelistEditorScreen extends ScreenPlus {
     Screen parent;
     private final ArrayList<WhitelistItem> current_whitelist;
     private final int currentPage;
-    private static final int BLOCKS_PER_PAGE = 12;
-    private EditBox blockInput;
+    private static final int BLOCKS_PER_PAGE = 10;
+
     private final String filename;
     private final WhitelistItem createdWhitelistItem = new WhitelistItem(null, null, null, null);
-    private Button addToWhitelistBtn;
     private Button gravityColumnButton;
     private Button gravityAboveButton;
-    private static final List<String> waterloggedValues = List.of("true", "false");
-    public static final List<String> pistonBehaviorValues = Arrays.stream(Scan.PistonBehavior.values()).map(Enum::toString).toList();
+    private final List<String> waterloggedValues = List.of("true", "false");
+    private final List<String> pistonBehaviorValues = Arrays.stream(Scan.PistonBehavior.values()).map(Enum::toString).toList();
     private static final List<String> BLOCK_IDS;
     static {
         List<String> list = new ArrayList<>();
@@ -60,6 +56,9 @@ public class WhitelistEditorScreen extends ScreenPlus {
         BLOCK_IDS = Collections.unmodifiableList(list);
     }
     private SuggestionListWidget blockSuggestions;
+    private Button addToWhitelistBtn;
+    private EditBox blockInput;
+    private MultiLineTextWidget outputWhitelistTextWidget;
 
     private ToggelableWidgedDropDownList<String> waterloggedWidget;
     private ToggelableWidgedDropDownList<String> pistonBehaviorWidget;
@@ -67,6 +66,10 @@ public class WhitelistEditorScreen extends ScreenPlus {
     private ToggelableWidgedDropDownList<String> blockEqualsOperatorsWidget;
     private ToggelableWidgedDropDownList<String> pistonEqualsOperatorsWidget;
     private EditBox blastResistanceValue;
+
+
+    List<WhitelistItem> pageBlocks;
+    private int rowHeight = 60;
 
     protected WhitelistEditorScreen(Screen parent, String filename, int page) {
         super(Component.literal("WhitelistEditorScreen"));
@@ -87,9 +90,8 @@ public class WhitelistEditorScreen extends ScreenPlus {
         int totalPages = (current_whitelist.size() + BLOCKS_PER_PAGE - 1) / BLOCKS_PER_PAGE;
         int from = currentPage * BLOCKS_PER_PAGE;
         int to = Math.min(from + BLOCKS_PER_PAGE, current_whitelist.size());
-        List<WhitelistItem> pageBlocks = current_whitelist.subList(from, to);
+        pageBlocks = current_whitelist.subList(from, to);
 
-        int rowHeight = 60;
         int y = 30;
 
         //block input
@@ -122,17 +124,14 @@ public class WhitelistEditorScreen extends ScreenPlus {
 
         int listWidth = 220;
 
-
-
-
-        y+=rowHeight;
+        y += rowHeight;
         //waterlogged
         addRenderableWidget(new StringWidget(30, y, 70, 20, Component.literal("Waterlogged"), font));
         waterloggedWidget = new ToggelableWidgedDropDownList<>(130, y, 50, 20, 60, 2, waterloggedValues);
         waterloggedWidget.setZLevel(100);
         addWidget(waterloggedWidget);
 
-        y+=rowHeight;
+        y += rowHeight;
         //pistonBehavior
         addRenderableWidget(new StringWidget(30, y, 120, 20, Component.literal("Piston behavior"), font));
         pistonEqualsOperatorsWidget = new ToggelableWidgedDropDownList<>(130, y, 50, 20, 60, 2, BlockMatcher.EQUALS_OPERATORS);
@@ -142,7 +141,7 @@ public class WhitelistEditorScreen extends ScreenPlus {
         pistonBehaviorWidget.setZLevel(100);
         addWidget(pistonBehaviorWidget);
 
-        y+=rowHeight;
+        y += rowHeight;
         //blastResistance
         addRenderableWidget(new StringWidget(30, y, 120, 20, Component.literal("Blast resistance"), font));
         blastResistanceComparisonOperatorsWidget = new ToggelableWidgedDropDownList<>(130, y, 50, 20, 100, 4, BlockMatcher.COMPARISON_OPERATORS);
@@ -154,6 +153,19 @@ public class WhitelistEditorScreen extends ScreenPlus {
         });
         addRenderableWidget(blastResistanceValue);
 
+        y += 30;
+        addToWhitelistBtn = Button.builder(Component.literal("Add to whitelist"), btn -> {
+            if(validateCreatedWhitelistItem()){
+                current_whitelist.add(createdWhitelistItem);
+                WhitelistManager.saveData(new Whitelist(current_whitelist), filename);
+                minecraft.gui.setScreen(new WhitelistEditorScreen(parent, filename, 0));
+            }
+        }).bounds(30, y, 90, 20).build();
+        addRenderableWidget(addToWhitelistBtn);
+
+        y += 30;
+        outputWhitelistTextWidget = new MultiLineTextWidget(30, y, Component.literal("[]"), minecraft.font);
+        addRenderableWidget(outputWhitelistTextWidget);
 
         y = 30;
         int i = 0;
@@ -161,15 +173,15 @@ public class WhitelistEditorScreen extends ScreenPlus {
             i++;
             addRenderableWidget(Button.builder(Component.literal("❌"), btn -> {
                 WhitelistManager.removeFromWhitelist(filename, item);
-                minecraft.setScreenAndShow(new WhitelistEditorScreen(parent, filename, currentPage));
+                minecraft.gui.setScreen(new WhitelistEditorScreen(parent, filename, currentPage));
             }).bounds(280, y, 20, 20).build());
-            StringWidget widget = new StringWidget(310, y, 120, 20, Component.literal("Condition " + i + "     OR"), font);
+            StringWidget widget = new StringWidget(310, y, 120, 20, Component.literal("Condition " + (currentPage * BLOCKS_PER_PAGE + i) + "  OR"), font);
 
-            String builder = (item.block == null ? "-\n" : item.block + " AND\n") +
-                    (item.gravityColumn ? "Gravity column: 7+ AND\n" : "-\n") +
-                    (item.gravityAbove ? "Gravity above: column AND\n" : "-\n") +
-                    (item.waterlogged == null ? "-\n" : "Waterlogged: " + item.waterlogged + " AND\n") +
-                    (item.pistonBehavior == null ? "-\n" : "Piston behavior: " + item.pistonBehavior + " AND\n") +
+            String builder = (item.block == null ? "-" : item.block + " AND") + System.lineSeparator() +
+                    (item.gravityColumn ? "Gravity column: 7+ AND" + System.lineSeparator() : "") +
+                    (item.gravityAbove ? "Gravity above: column AND" + System.lineSeparator() : "") +
+                    (item.waterlogged == null ? "-" : "Waterlogged: " + item.waterlogged + " AND") + System.lineSeparator() +
+                    (item.pistonBehavior == null ? "-" : "Piston behavior: " + item.pistonBehavior + " AND") + System.lineSeparator() +
                     (item.blastResistance == null ? "-" : "Blast resistance: " + item.blastResistance);
             widget.setTooltip(Tooltip.create(Component.literal(builder)));
             addRenderableWidget(widget);
@@ -182,49 +194,51 @@ public class WhitelistEditorScreen extends ScreenPlus {
                 listWidth
         ));
 
-        //presets
-        addRenderableWidget(new StringWidget(width - 130, 10, 100, 20, Component.literal("Presets"), font));
 
+        //pages
+        y = pageBlocks.size() * 23 + 30;
+
+        Button prevBtn = Button.builder(Component.literal("<"), btn ->
+                minecraft.gui.setScreen(new WhitelistEditorScreen(parent, filename, currentPage - 1))
+        ).bounds(280, y, 20, 20).build();
+        prevBtn.active = currentPage > 0;
+        addRenderableWidget(prevBtn);
+
+
+        addRenderableWidget(new StringWidget(275 + 30, y + 1, 80, 20, Component.literal("Page " + (currentPage + 1) + "/" + Math.max(1, totalPages)), minecraft.font));
+
+        Button nextBtn = Button.builder(Component.literal(">"), btn ->
+                minecraft.gui.setScreen(new WhitelistEditorScreen(parent, filename, currentPage + 1))
+        ).bounds(400, y, 20, 20).build();
+        nextBtn.active = to < current_whitelist.size();
+        addRenderableWidget(nextBtn);
+
+
+        //presets
+        y += 50;
+
+        //text
+        addRenderableWidget(new StringWidget(280, y, 100, 20, Component.literal("Presets"), font));
+
+        //presets list
         ToggelableWidgedDropDownList<Whitelist> presets = getPresets();
+        presets.setY(y + 30);
         addWidget(presets);
+
+        //presets button
         addRenderableWidget(Button.builder(Component.literal("Use preset"), btn -> {
             if(presets.getSelectedEntry() != null){
                 current_whitelist.addAll(presets.getSelectedEntry().whitelist);
                 WhitelistManager.saveData(new Whitelist(current_whitelist), filename);
-                minecraft.setScreenAndShow(new WhitelistEditorScreen(parent, filename, 0));
+                minecraft.gui.setScreen(new WhitelistEditorScreen(parent, filename, 0));
             }
-        }).bounds(width - 110, 115, 80, 20).build());
+        }).bounds(340, y - 1, 80, 20).build());
 
 
-        int buttonY = height - 40;
-        if (currentPage > 0) {
-            addRenderableWidget(Button.builder(Component.literal("< Prev"), btn ->
-                    minecraft.setScreenAndShow(new WhitelistEditorScreen(parent, filename, currentPage - 1))
-            ).bounds(width / 2 - 120, buttonY, 80, 20).build());
-        }
-
-        addRenderableWidget(Button.builder(
-                Component.literal("Page " + (currentPage + 1) + "/" + Math.max(1, totalPages)),
-                btn -> {}
-        ).bounds(width / 2 - 40, buttonY, 80, 20).build());
-
-        if (to < current_whitelist.size()) {
-            addRenderableWidget(Button.builder(Component.literal("Next >"), btn ->
-                    minecraft.setScreenAndShow(new WhitelistEditorScreen(parent, filename, currentPage + 1))
-            ).bounds(width / 2 + 40, buttonY, 80, 20).build());
-        }
-
-        addRenderableWidget(Button.builder(Component.literal("Back"), btn -> minecraft.setScreenAndShow(parent))
+        //back button
+        addRenderableWidget(Button.builder(Component.literal("Back"), btn -> minecraft.gui.setScreen(parent))
                 .bounds(30, height - 30, 80, 20).build());
 
-        addToWhitelistBtn = Button.builder(Component.literal("Add to whitelist"), btn -> {
-                    if(validateCreatedWhitelistItem()){
-                        current_whitelist.add(createdWhitelistItem);
-                        WhitelistManager.saveData(new Whitelist(current_whitelist), filename);
-                        minecraft.setScreenAndShow(new WhitelistEditorScreen(parent, filename, 0));
-                    }
-                }).bounds(30, 260, 90, 20).build();
-        addRenderableWidget(addToWhitelistBtn);
     }
 
 
@@ -256,7 +270,7 @@ public class WhitelistEditorScreen extends ScreenPlus {
         list.add(fluidsAndWaterlogged);
         list.add(quarry);
         list.add(redstoneGravity);
-        return new ToggelableWidgedDropDownList<>(width - 180, 30, 150, 20, 100, 5, list);
+        return new ToggelableWidgedDropDownList<>(280, pageBlocks.size() * 23 + 80, 140, 20, 100, 5, list);
     }
 
     private boolean validateCreatedWhitelistItem(){
@@ -357,14 +371,22 @@ public class WhitelistEditorScreen extends ScreenPlus {
         }else createdWhitelistItem.blastResistance = null;
 
         updateGravityButtons();
+        this.outputWhitelistTextWidget.setMessage(Component.literal(createdWhitelistItem.toString()));
+
+        int whitelistEditOutlineHeight = blockEqualsOperatorsWidget.getHeight() +
+                waterloggedWidget.getHeight() +
+                pistonBehaviorWidget.getHeight() +
+                addToWhitelistBtn.getHeight() +
+                blastResistanceComparisonOperatorsWidget.getHeight() +
+                outputWhitelistTextWidget.getHeight() + rowHeight * 2 + 40;
 
         //borders
-        context.outline(20,20, 245, 265, CommonColors.LIGHT_GRAY);
-        context.outline(275,20, 130, height - 80, CommonColors.LIGHT_GRAY);
+        context.outline(20,20, 245, whitelistEditOutlineHeight, CommonColors.LIGHT_GRAY);
+        context.outline(275,20, 150, pageBlocks.size() * 23 + 118, CommonColors.LIGHT_GRAY);
 
         addToWhitelistBtn.active = validateCreatedWhitelistItem();
+        //context.text(font, Component.literal(createdWhitelistItem.toString()), 30,240, CommonColors.WHITE, true);
         super.extractRenderState(context, mouseX, mouseY, delta);
-        context.text(font, Component.literal(createdWhitelistItem.toString()), 30,240, CommonColors.WHITE, true);
         blockSuggestions.extractRenderState(context, mouseX, mouseY, delta);
     }
 

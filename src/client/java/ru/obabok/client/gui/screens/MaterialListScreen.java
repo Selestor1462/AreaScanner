@@ -58,7 +58,7 @@ public class MaterialListScreen extends Screen {
 
 
         addRenderableWidget(Button.builder(Component.literal("Back"), button -> {
-            minecraft.setScreenAndShow(parent);
+            minecraft.gui.setScreen(parent);
         }).bounds(10, height - 30, 50, 20).build());
     }
 
@@ -164,7 +164,7 @@ public class MaterialListScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean bl) {
-        if (event.button() == 0 && isScrollBarHovered(event.x(), event.y())) {
+        if (event.button() == 1 && isScrollBarHovered(event.x(), event.y())) {
             isDraggingScrollBar = true;
             lastMouseY = event.y();
             return true;
@@ -191,7 +191,7 @@ public class MaterialListScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        if (event.button() == 0) {
+        if (event.button() == 1) {
             isDraggingScrollBar = false;
         }
         return super.mouseReleased(event);
@@ -211,7 +211,7 @@ public class MaterialListScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         if(event.key() == InputConstants.KEY_ESCAPE){
-            minecraft.setScreenAndShow(parent);
+            minecraft.gui.setScreen(parent);
             return true;
         }
         return super.keyPressed(event);

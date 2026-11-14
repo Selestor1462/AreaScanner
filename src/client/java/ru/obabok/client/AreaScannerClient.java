@@ -86,6 +86,9 @@ public class AreaScannerClient implements ClientModInitializer {
 			LevelRenderEvents.END_MAIN.register(RenderUtil::render);
 			ChunkScheduler.startProcessing();
 			ClientLifecycleEvents.CLIENT_STOPPING.register(ChunkScheduler::stopProcessing);
+			Config.Generic.MAIN_RENDER.setValueChangeCallback(_ -> {
+				Scan.renderDirty = true;
+			});
 		}
 	}
 	//need to be here because this class no load malilib classes

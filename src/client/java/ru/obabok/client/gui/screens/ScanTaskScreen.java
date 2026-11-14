@@ -51,7 +51,7 @@ public class ScanTaskScreen extends ScreenPlus {
     protected ScanTaskScreen(Screen parent) {
         super(Component.literal("Scan task screen"));
         this.parent = parent;
-        if(Minecraft.getInstance().player == null) Minecraft.getInstance().setScreenAndShow(parent);
+        if(Minecraft.getInstance().player == null) Minecraft.getInstance().gui.setScreen(parent);
         BlockArea existing = Scan.getArea();
         if (existing == null || existing.getBoxes().isEmpty()) {
             this.initialBox = new BlockArea(new BlockBox(
@@ -225,7 +225,7 @@ public class ScanTaskScreen extends ScreenPlus {
 
         Button clearLavaBtn = Button.builder(Component.literal("Clear lava"), btn -> {
             AsyncObsidianScanner.stopAndClear();
-            minecraft.setScreenAndShow(new ScanTaskScreen(parent, Scan.getArea()));
+            minecraft.gui.setScreen(new ScanTaskScreen(parent, Scan.getArea()));
         }).bounds(100, height - 55, 75, 20).build();
         clearLavaBtn.active = AsyncObsidianScanner.canStopOrClear();
         addRenderableWidget(clearLavaBtn);
@@ -269,13 +269,13 @@ public class ScanTaskScreen extends ScreenPlus {
                 Scan.selectedBlocks.clear();
                 Scan.renderDirty = true;
             }
-            minecraft.setScreenAndShow(new ScanTaskScreen(parent, Scan.getArea()));
+            minecraft.gui.setScreen(new ScanTaskScreen(parent, Scan.getArea()));
         }).bounds(399, height - 55, 75, 20).build();
         clearDebrisBtn.active = DebrisScanner.isScanning() || DebrisScanner.getQualifyingDebrisCount() > 0;
         addRenderableWidget(clearDebrisBtn);
 
         //back button
-        addRenderableWidget(Button.builder(Component.literal("Back"), btn -> minecraft.setScreenAndShow(parent)).bounds( 30, height - 30, 50, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Back"), btn -> minecraft.gui.setScreen(parent)).bounds( 30, height - 30, 50, 20).build());
 
         //start button
         startButton = Button.builder(Component.literal("Start scan"), btn -> {
@@ -306,7 +306,7 @@ public class ScanTaskScreen extends ScreenPlus {
             if (ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()) {
                 ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.stopAndClear();
             }
-            minecraft.setScreenAndShow(new ScanTaskScreen(parent, box));
+            minecraft.gui.setScreen(new ScanTaskScreen(parent, box));
         }).bounds(180, height - 30, 80, 20).build();
         stopScanBtn.active = Scan.isProcessing() || Scan.isRemoteProcessing()
                 || ru.obabok.client.util.Lavobsidian.AsyncObsidianScanner.canStopOrClear()
@@ -340,7 +340,7 @@ public class ScanTaskScreen extends ScreenPlus {
     @Override
     public boolean keyPressed(KeyEvent keyEvent) {
         if(keyEvent.key() == InputConstants.KEY_ESCAPE){
-            minecraft.setScreenAndShow(parent);
+            minecraft.gui.setScreen(parent);
             return true;
         }
         return super.keyPressed(keyEvent);
@@ -456,7 +456,7 @@ public class ScanTaskScreen extends ScreenPlus {
         for (CoordButton entry : coordButtons) {
             if (entry.button.isMouseOver(event.x(), event.y())) {
                 playClickSound();
-                int amount = (event.button() == 0) ? 1 : (event.button() == 1 ? -1 : 0);
+                int amount = (event.button() == 1) ? 1 : (event.button() == 3 ? -1 : 0);
                 if (amount != 0) {
                     applyNudge(entry.field, amount);
                     return true;
