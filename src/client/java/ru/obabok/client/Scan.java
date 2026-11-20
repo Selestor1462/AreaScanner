@@ -58,12 +58,15 @@ public class Scan {
         processing = true;
 
         HashSet<ChunkPos> affectedChunks = area.getAffectedChunks();
-        for (ChunkPos chunkPos : affectedChunks){
-            if (world.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, false) != null) {
-                ChunkScheduler.addChunkToProcess(chunkPos);
+        synchronized (unloadedChunks) {
+            unloadedChunks.clear();
+            for (ChunkPos chunkPos : affectedChunks){
+                if (world.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, false) != null) {
+                    ChunkScheduler.addChunkToProcess(chunkPos);
+                }
+                unloadedChunks.add(chunkPos);
+                allChunksCounter++;
             }
-            unloadedChunks.add(chunkPos);
-            allChunksCounter++;
         }
         renderDirty = true;
         return 1;
@@ -92,8 +95,12 @@ public class Scan {
     public static void stopScan(){
         processing = false;
         ru.obabok.client.util.DebrisScanner.stopScan();
-        selectedBlocks.clear();
-        unloadedChunks.clear();
+        synchronized (selectedBlocks) {
+            selectedBlocks.clear();
+        }
+        synchronized (unloadedChunks) {
+            unloadedChunks.clear();
+        }
         renderDirty = true;
         allChunksCounter = 0;
         area = null;
@@ -134,15 +141,19 @@ public class Scan {
     }
 
     private static void addPositions(long[] positions){
-        for (int i = 0; i < positions.length; i++) {
-            selectedBlocks.add(BlockPos.of(positions[i]));
+        synchronized (selectedBlocks) {
+            for (int i = 0; i < positions.length; i++) {
+                selectedBlocks.add(BlockPos.of(positions[i]));
+            }
         }
         renderDirty = true;
     }
 
     private static void removePositions(long[] positions){
-        for (int i = 0; i < positions.length; i++) {
-            selectedBlocks.remove(BlockPos.of(positions[i]));
+        synchronized (selectedBlocks) {
+            for (int i = 0; i < positions.length; i++) {
+                selectedBlocks.remove(BlockPos.of(positions[i]));
+            }
         }
         renderDirty = true;
     }
@@ -158,7 +169,11 @@ public class Scan {
     }
 
     public static long getChunkProcessedCounter(){
-        return isRemoteProcessing() ? remoteChunkProcessedCounter : allChunksCounter - unloadedChunks.size();
+        int unloadedSize;
+        synchronized (unloadedChunks) {
+            unloadedSize = unloadedChunks.size();
+        }
+        return isRemoteProcessing() ? remoteChunkProcessedCounter : allChunksCounter - unloadedSize;
     }
 
     public static void markRemoteChunkProcessed(long remoteProcessed) {
@@ -201,7 +216,11 @@ public class Scan {
             }
         }
 
-        if(unloadedChunks.remove(chunkPos)){
+        boolean removed;
+        synchronized (unloadedChunks) {
+            removed = unloadedChunks.remove(chunkPos);
+        }
+        if(removed){
             renderDirty = true;
         }
         checkFinished();
@@ -209,14 +228,16 @@ public class Scan {
 
     //deletes blocks from selected blocks
     public static void updateChunk(ChunkPos chunkPos, ClientLevel world){
-        Iterator<BlockPos> iterator = selectedBlocks.iterator();
-        while (iterator.hasNext()) {
-            BlockPos blockPos = iterator.next();
-            if (blockPos.getX() >> 4 == chunkPos.x && blockPos.getZ() >> 4 == chunkPos.z) {
-                if(!BlockMatcher.matches(whitelist, world.getBlockState(blockPos), world, blockPos)){
-                    iterator.remove();
-                    renderDirty = true;
-                    MaterialListScreen.addBlock(world.getBlockState(blockPos).getBlock(), -1);
+        synchronized (selectedBlocks) {
+            Iterator<BlockPos> iterator = selectedBlocks.iterator();
+            while (iterator.hasNext()) {
+                BlockPos blockPos = iterator.next();
+                if (blockPos.getX() >> 4 == chunkPos.x && blockPos.getZ() >> 4 == chunkPos.z) {
+                    if(!BlockMatcher.matches(whitelist, world.getBlockState(blockPos), world, blockPos)){
+                        iterator.remove();
+                        renderDirty = true;
+                        MaterialListScreen.addBlock(world.getBlockState(blockPos).getBlock(), -1);
+                    }
                 }
             }
         }
@@ -224,7 +245,12 @@ public class Scan {
 
     private static void checkFinished(){
         if(!processing) return;
-        if(!selectedBlocks.isEmpty() || !unloadedChunks.isEmpty()) return;
+        synchronized (selectedBlocks) {
+            if(!selectedBlocks.isEmpty()) return;
+        }
+        synchronized (unloadedChunks) {
+            if(!unloadedChunks.isEmpty()) return;
+        }
         if(!ChunkScheduler.getChunkQueue().isEmpty()) return;
         stopScan();
         Minecraft mc = Minecraft.getInstance();
@@ -241,7 +267,11 @@ public class Scan {
         if (whitelist == null) return;
 
         if (BlockMatcher.matches(whitelist, blockState, world, blockPos)) {
-            if(selectedBlocks.add(blockPos)){
+            boolean added;
+            synchronized (selectedBlocks) {
+                added = selectedBlocks.add(blockPos);
+            }
+            if(added){
                 renderDirty = true;
             }
             MaterialListScreen.addBlock(blockState.getBlock(), 1);

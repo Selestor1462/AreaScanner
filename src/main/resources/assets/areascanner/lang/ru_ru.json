@@ -62,6 +62,9 @@
   "areascanner.config.generic.name.lookRandomSelectedBlock": "Посмотреть на случайный выделенный блок",
   "areascanner.config.generic.comment.lookRandomSelectedBlock": "",
 
+  "areascanner.config.generic.name.lookNearestSelectedBlock": "Посмотреть на ближайший выделенный блок",
+  "areascanner.config.generic.comment.lookNearestSelectedBlock": "",
+
   "areascanner.config.generic.name.mainRender": "Главный рендер",
   "areascanner.config.generic.comment.mainRender": "Переключает рендер вообще всего",
 

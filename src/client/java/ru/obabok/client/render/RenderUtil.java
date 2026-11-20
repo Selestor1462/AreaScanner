@@ -590,6 +590,17 @@ public class RenderUtil {
         BlockPos pos = renderBlocksList.get(random.nextInt(renderBlocksList.size()));
         client.player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(pos.getX(), pos.getY(), pos.getZ()));
     }
+
+    public static void lookNearestSelectedBlock(){
+        if(client.player == null) return;
+        BlockPos pos = HudRender.getCachedNearestPos();
+        if (pos == null && !renderBlocksList.isEmpty()) {
+            pos = renderBlocksList.get(0);
+        }
+        if (pos != null) {
+            client.player.lookAt(EntityAnchorArgument.Anchor.EYES, new Vec3(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5));
+        }
+    }
     public static void clearRender(){
         renderBlocksList.clear();
         renderChunksList.clear();

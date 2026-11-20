@@ -53,6 +53,11 @@ public class HudRender {
     private static long lastNearestCheckTime = 0;
     private static int lastSelectedBlocksCount = -1;
 
+    private static ChunkPos cachedNearestChunk = null;
+    private static double cachedNearestChunkDistSq = 0;
+    private static long lastNearestChunkCheckTime = 0;
+    private static int lastUnloadedChunksCount = -1;
+
 
     private static String renderTime;
     private static long lastUpdateTime = 0;
@@ -104,20 +109,36 @@ public class HudRender {
             addScanStatus();
 
             try {
-                if(!Scan.selectedBlocks.isEmpty()){
+                int selectedCount;
+                synchronized (Scan.selectedBlocks) {
+                    selectedCount = Scan.selectedBlocks.size();
+                }
+                if(selectedCount > 0){
                     LocalPlayer player = Minecraft.getInstance().player;
                     Vec3 playerPos = player != null ? player.position() : null;
                     updateNearestBlock(playerPos);
-                    if (cachedNearestPos != null) {
+                    if (cachedNearestPos != null && playerPos != null) {
+                        int distMeters = (int) Math.round(Math.sqrt(cachedNearestDistSq));
+                        String dir = getCardinalDirection(cachedNearestPos.getX() + 0.5 - playerPos.x, cachedNearestPos.getZ() + 0.5 - playerPos.z);
+                        lines.add(Component.literal("Selected blocks: %d -> [%d, %d, %d] (%dm, %s)"
+                                .formatted(selectedCount, cachedNearestPos.getX(), cachedNearestPos.getY(), cachedNearestPos.getZ(), distMeters, dir)));
+                    } else if (cachedNearestPos != null) {
                         int distMeters = (int) Math.round(Math.sqrt(cachedNearestDistSq));
                         lines.add(Component.literal("Selected blocks: %d -> [%d, %d, %d] (%dm)"
-                                .formatted(Scan.selectedBlocks.size(), cachedNearestPos.getX(), cachedNearestPos.getY(), cachedNearestPos.getZ(), distMeters)));
+                                .formatted(selectedCount, cachedNearestPos.getX(), cachedNearestPos.getY(), cachedNearestPos.getZ(), distMeters)));
                     } else {
-                        BlockPos pos = Scan.selectedBlocks.iterator().next();
-                        lines.add(Component.literal("Selected blocks: %d -> [%d, %d, %d]".formatted(Scan.selectedBlocks.size(), pos.getX(), pos.getY(), pos.getZ())));
+                        BlockPos pos = null;
+                        synchronized (Scan.selectedBlocks) {
+                            if (!Scan.selectedBlocks.isEmpty()) {
+                                pos = Scan.selectedBlocks.iterator().next();
+                            }
+                        }
+                        if (pos != null) {
+                            lines.add(Component.literal("Selected blocks: %d -> [%d, %d, %d]".formatted(selectedCount, pos.getX(), pos.getY(), pos.getZ())));
+                        }
                     }
                 }
-                boolean hasClusters = !Scan.selectedBlocks.isEmpty() || !Scan.unloadedChunks.isEmpty() || AsyncObsidianScanner.hasRenderableMarkers();
+                boolean hasClusters = selectedCount > 0 || !Scan.unloadedChunks.isEmpty() || AsyncObsidianScanner.hasRenderableMarkers();
                 if(hasClusters && (Config.Generic.LOD2_HUD.getBooleanValue() || Config.Generic.UNLOADED_CHUNK_HUD_RENDER.getBooleanValue())){
                     //renderClusteredDots(guiGraphicsExtractor);
                     clusterUpdateTimer += deltaTracker.getRealtimeDeltaTicks();
@@ -131,16 +152,93 @@ public class HudRender {
                 LOGGER.error(exception.getMessage());
             }
 
-            if(!Scan.unloadedChunks.isEmpty()){
+            int unloadedCount;
+            synchronized (Scan.unloadedChunks) {
+                unloadedCount = Scan.unloadedChunks.size();
+            }
+            if(unloadedCount > 0){
                 try {
-                    Iterator<ChunkPos> iterator = Scan.unloadedChunks.iterator();
-                    if(iterator.hasNext()){
-                        lines.add(Component.literal("Unchecked chunks: %d -> %s".formatted(Scan.unloadedChunks.size(), iterator.next().toString())));
+                    LocalPlayer player = Minecraft.getInstance().player;
+                    Vec3 playerPos = player != null ? player.position() : null;
+                    updateNearestUnloadedChunk(playerPos);
+                    if (cachedNearestChunk != null && playerPos != null) {
+                        int distMeters = (int) Math.round(Math.sqrt(cachedNearestChunkDistSq));
+                        int blockX = (cachedNearestChunk.x << 4) + 8;
+                        int blockZ = (cachedNearestChunk.z << 4) + 8;
+                        String dir = getCardinalDirection(blockX - playerPos.x, blockZ - playerPos.z);
+                        lines.add(Component.literal("Unchecked chunks: %d -> [%d, %d] (%dm, %s)"
+                                .formatted(unloadedCount, blockX, blockZ, distMeters, dir)));
+                    } else {
+                        lines.add(Component.literal("Unchecked chunks: %d".formatted(unloadedCount)));
                     }
                 }catch (Exception exception){
                     LOGGER.error(exception.getMessage());
                 }
 
+            }
+            Set<ChunkPos> lavobsidianChunks = AsyncObsidianScanner.getUnloadedChunks();
+            if (!lavobsidianChunks.isEmpty()) {
+                LocalPlayer player = Minecraft.getInstance().player;
+                Vec3 playerPos = player != null ? player.position() : null;
+                ChunkPos nearest = null;
+                double minDistSq = Double.MAX_VALUE;
+                if (playerPos != null) {
+                    for (ChunkPos cp : lavobsidianChunks) {
+                        double cx = (cp.x << 4) + 8.0 - playerPos.x;
+                        double cz = (cp.z << 4) + 8.0 - playerPos.z;
+                        double distSq = cx * cx + cz * cz;
+                        if (distSq < minDistSq) {
+                            minDistSq = distSq;
+                            nearest = cp;
+                        }
+                    }
+                }
+                if (nearest != null && playerPos != null) {
+                    int distMeters = (int) Math.round(Math.sqrt(minDistSq));
+                    int blockX = (nearest.x << 4) + 8;
+                    int blockZ = (nearest.z << 4) + 8;
+                    String dir = getCardinalDirection(blockX - playerPos.x, blockZ - playerPos.z);
+                    lines.add(Component.literal("Lavobsidian unchecked chunks: %d -> [%d, %d] (%dm, %s)"
+                            .formatted(lavobsidianChunks.size(), blockX, blockZ, distMeters, dir)));
+                } else {
+                    lines.add(Component.literal("Lavobsidian unchecked chunks: %d".formatted(lavobsidianChunks.size())));
+                }
+            }
+            int lavaMarkersCount = AsyncObsidianScanner.getMarkerCount();
+            if (lavaMarkersCount > 0) {
+                var player = Minecraft.getInstance().player;
+                BlockPos nearest = AsyncObsidianScanner.getNearestMarker(player != null ? player.blockPosition() : null);
+                if (nearest != null && player != null) {
+                    double dx = nearest.getX() + 0.5 - player.position().x;
+                    double dy = nearest.getY() + 0.5 - player.position().y;
+                    double dz = nearest.getZ() + 0.5 - player.position().z;
+                    int dist = (int) Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
+                    String dir = getCardinalDirection(dx, dz);
+                    lines.add(Component.literal("Lava markers: %d -> [%d, %d, %d] (%dm, %s)"
+                            .formatted(lavaMarkersCount, nearest.getX(), nearest.getY(), nearest.getZ(), dist, dir)));
+                } else if (nearest != null) {
+                    lines.add(Component.literal("Lava markers: %d -> [%d, %d, %d]".formatted(lavaMarkersCount, nearest.getX(), nearest.getY(), nearest.getZ())));
+                } else {
+                    lines.add(Component.literal("Lava markers: %d".formatted(lavaMarkersCount)));
+                }
+            }
+            int predictedObsidianCount = AsyncObsidianScanner.getPredictedObsidianCount();
+            if (predictedObsidianCount > 0) {
+                var player = Minecraft.getInstance().player;
+                BlockPos nearest = AsyncObsidianScanner.getNearestPredictedObsidian(player != null ? player.blockPosition() : null);
+                if (nearest != null && player != null) {
+                    double dx = nearest.getX() + 0.5 - player.position().x;
+                    double dy = nearest.getY() + 0.5 - player.position().y;
+                    double dz = nearest.getZ() + 0.5 - player.position().z;
+                    int dist = (int) Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
+                    String dir = getCardinalDirection(dx, dz);
+                    lines.add(Component.literal("Predicted obsidian: %d -> [%d, %d, %d] (%dm, %s)"
+                            .formatted(predictedObsidianCount, nearest.getX(), nearest.getY(), nearest.getZ(), dist, dir)));
+                } else if (nearest != null) {
+                    lines.add(Component.literal("Predicted obsidian: %d -> [%d, %d, %d]".formatted(predictedObsidianCount, nearest.getX(), nearest.getY(), nearest.getZ())));
+                } else {
+                    lines.add(Component.literal("Predicted obsidian: %d".formatted(predictedObsidianCount)));
+                }
             }
             if (Config.Hud.HUD_RENDER_TIME.getBooleanValue()){
                 long now = System.currentTimeMillis();
@@ -565,19 +663,52 @@ public class HudRender {
         return sec + "s";
     }
 
+    public static BlockPos getCachedNearestPos() {
+        return cachedNearestPos;
+    }
+
+    public static String getCardinalDirection(double dx, double dz) {
+        double angle = Math.toDegrees(Math.atan2(dz, dx)); // 0=E, 90=S, 180=W, -90=N
+        if (angle < 0) {
+            angle += 360.0;
+        }
+        if (angle >= 337.5 || angle < 22.5) return "E";
+        if (angle < 67.5) return "SE";
+        if (angle < 112.5) return "S";
+        if (angle < 157.5) return "SW";
+        if (angle < 202.5) return "W";
+        if (angle < 247.5) return "NW";
+        if (angle < 292.5) return "N";
+        return "NE";
+    }
+
     private static void updateNearestBlock(Vec3 playerPos) {
-        if (playerPos == null || Scan.selectedBlocks.isEmpty()) {
+        if (playerPos == null) {
+            cachedNearestPos = null;
+            cachedNearestDistSq = 0;
+            return;
+        }
+
+        int currentSize;
+        synchronized (Scan.selectedBlocks) {
+            currentSize = Scan.selectedBlocks.size();
+        }
+        if (currentSize == 0) {
             cachedNearestPos = null;
             cachedNearestDistSq = 0;
             return;
         }
 
         long now = System.currentTimeMillis();
-        int currentSize = Scan.selectedBlocks.size();
+        boolean stillValid = false;
         if (cachedNearestPos != null
                 && currentSize == lastSelectedBlocksCount
-                && (now - lastNearestCheckTime < 250)
-                && Scan.selectedBlocks.contains(cachedNearestPos)) {
+                && (now - lastNearestCheckTime < 250)) {
+            synchronized (Scan.selectedBlocks) {
+                stillValid = Scan.selectedBlocks.contains(cachedNearestPos);
+            }
+        }
+        if (stillValid) {
             double dx = cachedNearestPos.getX() + 0.5 - playerPos.x;
             double dy = cachedNearestPos.getY() + 0.5 - playerPos.y;
             double dz = cachedNearestPos.getZ() + 0.5 - playerPos.z;
@@ -609,5 +740,59 @@ public class HudRender {
 
         cachedNearestPos = best;
         cachedNearestDistSq = minDistanceSq;
+    }
+
+    private static void updateNearestUnloadedChunk(Vec3 playerPos) {
+        if (playerPos == null) {
+            cachedNearestChunk = null;
+            cachedNearestChunkDistSq = 0;
+            return;
+        }
+        int currentSize;
+        synchronized (Scan.unloadedChunks) {
+            currentSize = Scan.unloadedChunks.size();
+        }
+        if (currentSize == 0) {
+            cachedNearestChunk = null;
+            cachedNearestChunkDistSq = 0;
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        boolean stillValid = false;
+        if (cachedNearestChunk != null && currentSize == lastUnloadedChunksCount && (now - lastNearestChunkCheckTime < 500)) {
+            synchronized (Scan.unloadedChunks) {
+                stillValid = Scan.unloadedChunks.contains(cachedNearestChunk);
+            }
+        }
+        if (stillValid) {
+            double cx = (cachedNearestChunk.x << 4) + 8.0 - playerPos.x;
+            double cz = (cachedNearestChunk.z << 4) + 8.0 - playerPos.z;
+            cachedNearestChunkDistSq = cx * cx + cz * cz;
+            return;
+        }
+
+        lastNearestChunkCheckTime = now;
+        lastUnloadedChunksCount = currentSize;
+
+        ChunkPos best = null;
+        double minDistanceSq = Double.MAX_VALUE;
+        double px = playerPos.x;
+        double pz = playerPos.z;
+
+        synchronized (Scan.unloadedChunks) {
+            for (ChunkPos cp : Scan.unloadedChunks) {
+                double cx = (cp.x << 4) + 8.0 - px;
+                double cz = (cp.z << 4) + 8.0 - pz;
+                double distSq = cx * cx + cz * cz;
+                if (distSq < minDistanceSq) {
+                    minDistanceSq = distSq;
+                    best = cp;
+                }
+            }
+        }
+
+        cachedNearestChunk = best;
+        cachedNearestChunkDistSq = minDistanceSq;
     }
 }
