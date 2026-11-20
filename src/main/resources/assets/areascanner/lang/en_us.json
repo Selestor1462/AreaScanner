@@ -62,6 +62,9 @@
   "areascanner.config.generic.name.lookRandomSelectedBlock": "Looks at random selected block",
   "areascanner.config.generic.comment.lookRandomSelectedBlock": "",
 
+  "areascanner.config.generic.name.lookNearestSelectedBlock": "Look at nearest selected block",
+  "areascanner.config.generic.comment.lookNearestSelectedBlock": "",
+
   "areascanner.config.generic.name.mainRender": "Main render",
   "areascanner.config.generic.comment.mainRender": "Toggle all render",
 

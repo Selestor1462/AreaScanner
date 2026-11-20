@@ -569,6 +569,31 @@ public class AsyncObsidianScanner {
         return waypoints.size();
     }
 
+    public static int getPredictedObsidianCount() {
+        ensureInitialized();
+        return predictedObsidianBlocks.size();
+    }
+
+    public static BlockPos getNearestPredictedObsidian(BlockPos playerPos) {
+        ensureInitialized();
+        if (predictedObsidianBlocks.isEmpty()) return null;
+        if (playerPos == null) return predictedObsidianBlocks.iterator().next();
+
+        BlockPos nearest = null;
+        long minDistSq = Long.MAX_VALUE;
+        for (BlockPos pos : predictedObsidianBlocks) {
+            long dx = (long) pos.getX() - playerPos.getX();
+            long dy = (long) pos.getY() - playerPos.getY();
+            long dz = (long) pos.getZ() - playerPos.getZ();
+            long distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq < minDistSq) {
+                minDistSq = distSq;
+                nearest = pos;
+            }
+        }
+        return nearest;
+    }
+
     public static BlockPos getNearestMarker(BlockPos playerPos) {
         ensureInitialized();
         if (waypoints.isEmpty()) return null;

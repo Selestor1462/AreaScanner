@@ -48,6 +48,7 @@ public class Config implements IConfigHandler {
         public static final ConfigBoolean REALTIME_UPDATE = new ConfigBoolean("realtimeUpdate", false).apply(GENERIC_KEY);
         public static final ConfigBoolean JOIN_NOTIFICATION = new ConfigBoolean("joinNotification", false).apply(GENERIC_KEY);
         public static final ConfigHotkey LOOK_RANDOM_SELECTED_BLOCK = new ConfigHotkey("lookRandomSelectedBlock", "").apply(GENERIC_KEY);
+        public static final ConfigHotkey LOOK_NEAREST_SELECTED_BLOCK = new ConfigHotkey("lookNearestSelectedBlock", "").apply(GENERIC_KEY);
         public static final ConfigBooleanHotkeyed MAIN_RENDER = new ConfigBooleanHotkeyed("mainRender", true, "").apply(GENERIC_KEY);
         public static final ConfigHotkey MAIN = new ConfigHotkey("mainHotkey", "LEFT_ALT,RIGHT_BRACKET").apply(GENERIC_KEY);
         public static final ConfigSplitter SPLITTER = new ConfigSplitter();
@@ -84,6 +85,7 @@ public class Config implements IConfigHandler {
                 REALTIME_UPDATE,
                 JOIN_NOTIFICATION,
                 LOOK_RANDOM_SELECTED_BLOCK,
+                LOOK_NEAREST_SELECTED_BLOCK,
                 MAIN_RENDER,
                 MAIN
         );
@@ -109,7 +111,7 @@ public class Config implements IConfigHandler {
         );
     }
 
-    public static final List<IHotkey> HOTKEYS = ImmutableList.of(Generic.MAIN, Generic.MAIN_RENDER, Generic.LOOK_RANDOM_SELECTED_BLOCK, Hud.HUD_ENABLE);
+    public static final List<IHotkey> HOTKEYS = ImmutableList.of(Generic.MAIN, Generic.MAIN_RENDER, Generic.LOOK_RANDOM_SELECTED_BLOCK, Generic.LOOK_NEAREST_SELECTED_BLOCK, Hud.HUD_ENABLE);
     @Override
     public void onConfigsChanged() {
         saveToFile();

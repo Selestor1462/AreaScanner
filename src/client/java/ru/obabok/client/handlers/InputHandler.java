@@ -40,5 +40,9 @@ public class InputHandler implements IKeybindProvider {
             RenderUtil.lookRandomSelectedBlock();
             return true;
         });
+        Config.Generic.LOOK_NEAREST_SELECTED_BLOCK.getKeybind().setCallback((action, key) -> {
+            RenderUtil.lookNearestSelectedBlock();
+            return true;
+        });
     }
 }
